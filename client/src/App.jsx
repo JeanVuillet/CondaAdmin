@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Login from './features/auth/Login';
 import AdminPage from './features/admin/AdminPage';
-import ProfPage from './features/prof/ProfPage';
-import ElevePage from './features/eleve/ElevePage';
 import SystemStatus from './components/SystemStatus/SystemStatus';
 import './App.css';
 
@@ -38,9 +36,14 @@ export default function App() {
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            setUser({ ...parsed, id: parsed._id || parsed.id });
+            // FILTRE DE SÉCURITÉ : Uniquement Admin ou Dev
+            if (parsed.role === 'admin' || parsed.isDeveloper) {
+                setUser({ ...parsed, id: parsed._id || parsed.id });
+            } else {
+                localStorage.clear();
+            }
         } catch(e) {
-            localStorage.removeItem('player');
+            localStorage.clear();
         }
     }
   }, []);
@@ -50,7 +53,14 @@ export default function App() {
       setUser(null); 
   };
 
-  if (isSyncing) return <div className="sync-overlay"><h2 style={{color:'white', fontWeight:900}}>RÉTABLISSEMENT DE LA CONNEXION...</h2></div>;
+  if (isSyncing) return (
+    <div className="sync-overlay">
+        <div className="text-center">
+            <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4 mx-auto"></div>
+            <h2 className="text-white font-black uppercase tracking-tighter">Synchronisation Core...</h2>
+        </div>
+    </div>
+  );
   
   if (!user) return (
       <div className="app-wrapper">
@@ -62,13 +72,7 @@ export default function App() {
   return (
     <div className="app-wrapper">
       <SystemStatus isAppReady={isAppReady} />
-      {user.role === 'admin' || user.isDeveloper ? (
-          <AdminPage user={user} onLogout={handleLogout} />
-      ) : (user.role === 'prof' ? (
-          <ProfPage user={user} onLogout={handleLogout} />
-      ) : (
-          <ElevePage user={user} onLogout={handleLogout} />
-      ))}
+      <AdminPage user={user} onLogout={handleLogout} />
     </div>
   );
 }
