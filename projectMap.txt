@@ -19,10 +19,21 @@
 │   │   ├── App.jsx
 │   │   ├── assets/
 │   │   │   └── react.svg
+│   │   ├── components/
+│   │   │   └── SystemStatus/
+│   │   │       ├── SystemStatus.css
+│   │   │       └── SystemStatus.jsx
 │   │   ├── features/
 │   │   │   ├── admin/
+│   │   │   │   ├── AdminDashboard.css
+│   │   │   │   ├── AdminDashboard.jsx
 │   │   │   │   ├── AdminPage.css
-│   │   │   │   └── AdminPage.jsx
+│   │   │   │   ├── AdminPage.jsx
+│   │   │   │   └── components/
+│   │   │   │       ├── DatabaseViewer.css
+│   │   │   │       ├── DatabaseViewer.jsx
+│   │   │   │       ├── DriveViewer.css
+│   │   │   │       └── DriveViewer.jsx
 │   │   │   ├── auth/
 │   │   │   │   ├── Login.css
 │   │   │   │   └── Login.jsx
@@ -156,6 +167,7 @@
 │       ├── 463ed86d6e598b9caeec4cd388cf2c41
 │       ├── 46b781ca6b50d61e08289ac3528b2a37
 │       ├── 475a9fbcb23396694d9f72993a852467
+│       ├── 4799553b730b9c97e65f328e02b7ff80
 │       ├── 48b421fe199f71b88556902ee8e07703
 │       ├── 4a43c1df546502e0eeb7b11ecfb37566
 │       ├── 4c36c39708a1d772537a0ebd47e3eddd
@@ -163,6 +175,7 @@
 │       ├── 5362fd2b26409028107cb2bf0b6e183f
 │       ├── 57c379caff0c0948e8bd1759536e68d5
 │       ├── 59105c71abdd1166db1a6e8215e1a500
+│       ├── 5b674f1e2b8f4cb2426c03a78bd3ca37
 │       ├── 5fdee988fa12526b09a3279e25c03e4b
 │       ├── 6124963df3f30761cd2bfecadb1eb7c9
 │       ├── 66c56b4125db7dd70c0f1e1dd12afd8b
@@ -186,6 +199,7 @@
 │       ├── 9f3c04d4e50d5f63662ec145f4c40fbb
 │       ├── a4f70d13fdfc2a1b44c5f77c5a78c044
 │       ├── a8bca3310ba3a8072b5a54e8d2f2c83d
+│       ├── a95171b0d9cbfa394aef3009db59358c
 │       ├── ai-1769124390020.jpg
 │       ├── ai-1769124788771.jpg
 │       ├── ai-1769124836695.jpg
@@ -348,7 +362,8 @@
 ├── server/
 │   ├── core/
 │   │   ├── ai.engine.js
-│   │   └── drive.engine.js
+│   │   ├── drive.engine.js
+│   │   └── ocr.engine.js
 │   ├── domains/
 │   │   ├── admin/
 │   │   │   ├── admin.routes.js
@@ -449,6 +464,4 @@
 ├── tests/
 │   └── integrity.test.js
 ├── tree.txt
-├── uploads/
-│   └── temp/
 └── verificatons.txt

@@ -12,7 +12,6 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
-      // ROUTE CRITIQUE : Tout ce qui commence par /uploads est géré par le serveur Node (server.js)
       '/uploads': {
         target: 'http://localhost:3000',
         changeOrigin: true,

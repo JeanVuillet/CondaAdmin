@@ -1,0 +1,21 @@
+.system-status-banner-flow {
+    position: relative;
+    width: 100%;
+    color: white;
+    font-family: 'JetBrains Mono', monospace;
+    z-index: 50;
+    overflow: hidden;
+    height: 44px;
+    display: flex;
+    align-items: center;
+}
+
+.system-status-content-wrapper {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}

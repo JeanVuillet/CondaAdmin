@@ -1,0 +1,2 @@
+.drive-viewer-overlay { position: fixed; inset: 0; z-index: 20001; background: rgba(15, 23, 42, 0.95); display: flex; align-items: center; justify-content: center; padding: 2rem; }
+.drive-viewer-window { background: white; width: 80%; height: 80%; border-radius: 30px; display: flex; flex-direction: column; overflow: hidden; }

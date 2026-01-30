@@ -20,10 +20,21 @@ STRUCTURE:
 │   │   ├── App.jsx
 │   │   ├── assets/
 │   │   │   └── react.svg
+│   │   ├── components/
+│   │   │   └── SystemStatus/
+│   │   │       ├── SystemStatus.css
+│   │   │       └── SystemStatus.jsx
 │   │   ├── features/
 │   │   │   ├── admin/
+│   │   │   │   ├── AdminDashboard.css
+│   │   │   │   ├── AdminDashboard.jsx
 │   │   │   │   ├── AdminPage.css
-│   │   │   │   └── AdminPage.jsx
+│   │   │   │   ├── AdminPage.jsx
+│   │   │   │   └── components/
+│   │   │   │       ├── DatabaseViewer.css
+│   │   │   │       ├── DatabaseViewer.jsx
+│   │   │   │       ├── DriveViewer.css
+│   │   │   │       └── DriveViewer.jsx
 │   │   │   ├── auth/
 │   │   │   │   ├── Login.css
 │   │   │   │   └── Login.jsx
@@ -157,6 +168,7 @@ STRUCTURE:
 │       ├── 463ed86d6e598b9caeec4cd388cf2c41
 │       ├── 46b781ca6b50d61e08289ac3528b2a37
 │       ├── 475a9fbcb23396694d9f72993a852467
+│       ├── 4799553b730b9c97e65f328e02b7ff80
 │       ├── 48b421fe199f71b88556902ee8e07703
 │       ├── 4a43c1df546502e0eeb7b11ecfb37566
 │       ├── 4c36c39708a1d772537a0ebd47e3eddd
@@ -164,6 +176,7 @@ STRUCTURE:
 │       ├── 5362fd2b26409028107cb2bf0b6e183f
 │       ├── 57c379caff0c0948e8bd1759536e68d5
 │       ├── 59105c71abdd1166db1a6e8215e1a500
+│       ├── 5b674f1e2b8f4cb2426c03a78bd3ca37
 │       ├── 5fdee988fa12526b09a3279e25c03e4b
 │       ├── 6124963df3f30761cd2bfecadb1eb7c9
 │       ├── 66c56b4125db7dd70c0f1e1dd12afd8b
@@ -187,6 +200,7 @@ STRUCTURE:
 │       ├── 9f3c04d4e50d5f63662ec145f4c40fbb
 │       ├── a4f70d13fdfc2a1b44c5f77c5a78c044
 │       ├── a8bca3310ba3a8072b5a54e8d2f2c83d
+│       ├── a95171b0d9cbfa394aef3009db59358c
 │       ├── ai-1769124390020.jpg
 │       ├── ai-1769124788771.jpg
 │       ├── ai-1769124836695.jpg
@@ -349,7 +363,8 @@ STRUCTURE:
 ├── server/
 │   ├── core/
 │   │   ├── ai.engine.js
-│   │   └── drive.engine.js
+│   │   ├── drive.engine.js
+│   │   └── ocr.engine.js
 │   ├── domains/
 │   │   ├── admin/
 │   │   │   ├── admin.routes.js
@@ -450,8 +465,6 @@ STRUCTURE:
 ├── tests/
 │   └── integrity.test.js
 ├── tree.txt
-├── uploads/
-│   └── temp/
 └── verificatons.txt
 
 
@@ -523,7 +536,7 @@ setInterval(applyUpdate, 1000);
 {
   "status": "OK",
   "file": null,
-  "timestamp": 1769447808275
+  "timestamp": 1769736595232
 }
 [[[£ END: apply_status.json £]]]
 
@@ -670,25 +683,30 @@ Currently, two official plugins are available:
 [[[£ FILE: client/src/App.jsx £]]]
 import React, { useState, useEffect, useRef } from 'react';
 import Login from './features/auth/Login';
-import ProfPage from './features/prof/ProfPage';
-import ElevePage from './features/eleve/ElevePage';
 import AdminPage from './features/admin/AdminPage';
+import SystemStatus from './components/SystemStatus/SystemStatus'; // ✅ Nouveau chemin
 import './App.css';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isAppReady, setIsAppReady] = useState(false); 
   const bootIdRef = useRef(null);
 
   useEffect(() => {
     const checkUpdate = async () => {
       try {
         const res = await fetch('/api/check-deploy');
+        if (!res.ok) return;
         const data = await res.json();
-        if (!bootIdRef.current) bootIdRef.current = data.bootId;
-        else if (data.bootId !== bootIdRef.current) {
-          setIsSyncing(true);
-          setTimeout(() => window.location.reload(), 1000);
+        
+        if (!bootIdRef.current) {
+            bootIdRef.current = data.bootId;
+            setIsAppReady(true);
+        } else if (data.bootId !== bootIdRef.current) {
+            setIsSyncing(true);
+            setIsAppReady(false);
+            setTimeout(() => window.location.reload(), 1000);
         }
       } catch (e) {}
     };
@@ -699,55 +717,351 @@ export default function App() {
   useEffect(() => {
     const saved = localStorage.getItem('player');
     if (saved) {
-        const parsed = JSON.parse(saved);
-        setUser({ ...parsed, id: parsed._id || parsed.id });
+        try {
+            const parsed = JSON.parse(saved);
+            if (parsed.role === 'admin' || parsed.isDeveloper) {
+                setUser({ ...parsed, id: parsed._id || parsed.id });
+            } else {
+                localStorage.removeItem('player');
+            }
+        } catch(e) {
+            localStorage.removeItem('player');
+        }
     }
   }, []);
 
-  const handleLogout = () => { localStorage.clear(); setUser(null); };
-
-  const handleBackToDev = async () => {
-      try {
-          const res = await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ role: 'ADMIN', firstName: 'Jean', lastName: 'Vuillet', password: 'A' })
-          });
-          const data = await res.json();
-          if (res.ok) {
-              localStorage.setItem('player', JSON.stringify(data.user));
-              window.location.reload();
-          }
-      } catch(e) { console.error(e); }
+  const handleLogout = () => { 
+      localStorage.clear(); 
+      setUser(null); 
   };
 
-  if (isSyncing) return <div className="sync-overlay"><h2 style={{color:'white', fontWeight:900}}>SYNCHRONISATION...</h2></div>;
-  if (!user) return <div className="app-wrapper"><Login onLoginSuccess={setUser} /></div>;
-
-  const isTestAccount = user.isTestAccount === true;
+  if (isSyncing) return <div className="sync-overlay"><h2 style={{color:'white', fontWeight:900}}>RÉTABLISSEMENT DE LA CONNEXION...</h2></div>;
+  
+  if (!user) return (
+      <div className="app-wrapper">
+          <SystemStatus isAppReady={isAppReady} />
+          <Login onLoginSuccess={setUser} />
+      </div>
+  );
 
   return (
     <div className="app-wrapper">
-      {/* BANDEAU DE SÉCURITÉ V99 (Pousse le contenu vers le bas) */}
-      {isTestAccount && (
-        <div className="v99-test-header">
-           <span>🛠️ MODE TEST ACTIF : {user.firstName} {user.lastName}</span>
-           <button className="btn-back-dev-mini" onClick={handleBackToDev}>⚡ RETOUR DÉVELOPPEUR</button>
-        </div>
-      )}
-
-      {/* ROUTAGE PRINCIPAL */}
-      {(user.isDeveloper || user.role === 'prof') ? (
-          <ProfPage user={user} onLogout={handleLogout} />
-      ) : user.role === 'admin' ? (
-          <AdminPage user={user} onLogout={handleLogout} />
-      ) : (
-          <ElevePage user={user} onLogout={handleLogout} onBackToProf={() => setUser({ ...user, role: "prof" })} />
-      )}
+      <SystemStatus isAppReady={isAppReady} />
+      <AdminPage user={user} onLogout={handleLogout} />
     </div>
   );
 }
 [[[£ END: client/src/App.jsx £]]]
+
+[[[£ FILE: client/src/components/SystemStatus/SystemStatus.css £]]]
+.system-status-banner-flow {
+    position: relative;
+    width: 100%;
+    color: white;
+    font-family: 'JetBrains Mono', monospace;
+    z-index: 50;
+    overflow: hidden;
+    height: 44px;
+    display: flex;
+    align-items: center;
+}
+
+.system-status-content-wrapper {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+[[[£ END: client/src/components/SystemStatus/SystemStatus.css £]]]
+
+[[[£ FILE: client/src/components/SystemStatus/SystemStatus.jsx £]]]
+import React, { useState, useEffect, useRef } from 'react';
+import './SystemStatus.css';
+
+export default function SystemStatus({ isAppReady }) {
+    const [statusData, setStatusData] = useState({ status: 'OK', timestamp: 0 });
+    const [visible, setVisible] = useState(false);
+    const [isManuallyHidden, setIsManuallyHidden] = useState(false); 
+    const [version, setVersion] = useState('?');
+    
+    const lastTimestampRef = useRef(0);
+
+    useEffect(() => {
+        const fetchVersion = async () => {
+            try {
+                const res = await fetch('/api/system/version');
+                const d = await res.json();
+                setVersion(d.hash || d.build || "?");
+            } catch (e) {}
+        };
+        if (isAppReady) fetchVersion();
+    }, [isAppReady]);
+
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            if (!isAppReady) return; 
+            try {
+                const res = await fetch('/api/system/apply-status');
+                const data = await res.json();
+                setStatusData(data);
+
+                if (data.timestamp !== lastTimestampRef.current) {
+                    lastTimestampRef.current = data.timestamp;
+                    setIsManuallyHidden(false); 
+                    setVisible(true);
+                } 
+            } catch (e) {}
+        }, 3000);
+        return () => clearInterval(interval);
+    }, [isAppReady]);
+
+    if (!visible || isManuallyHidden) return null;
+
+    return (
+        <div className={`system-status-banner-flow bg-indigo-600 show`}>
+            <div className="system-status-content-wrapper">
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] bg-black/30 px-2 py-0.5 rounded font-black tracking-widest">BUILD #{version}</span>
+                    <span className="text-[11px] font-black uppercase">CONSOLE ADMIN OPÉRATIONNELLE</span>
+                </div>
+                <button onClick={() => setIsManuallyHidden(true)} className="bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black">✕</button>
+            </div>
+        </div>
+    );
+}
+[[[£ END: client/src/components/SystemStatus/SystemStatus.jsx £]]]
+
+[[[£ FILE: client/src/features/admin/AdminDashboard.css £]]]
+/* --- LAYOUT GLOBAL --- */
+.admin-container {
+    max-width: 1300px;
+    margin: 0 auto;
+    padding-bottom: 100px;
+    font-family: 'Inter', sans-serif;
+}
+
+/* --- BANDEAU NOIR --- */
+.admin-toolbar-pill {
+    background: #0f172a;
+    border-radius: 50px;
+    padding: 12px 25px; /* Légèrement plus serré */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+}
+
+.nav-links { display: flex; gap: 20px; }
+.nav-link {
+    color: #64748b;
+    font-weight: 800;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    background: none; border: none; cursor: pointer;
+}
+.nav-link.active { color: #818cf8; position: relative; }
+
+.action-buttons { display: flex; gap: 10px; align-items: center; }
+
+/* ✅ REDUCTION TAILLE BOUTON VIDER CONTENU (Ergonomie) */
+.btn-clean { 
+    background: #ef4444; 
+    color: white; 
+    padding: 6px 14px !important; /* Moins de padding */
+    font-size: 0.6rem !important; /* Texte plus petit */
+    opacity: 0.9;
+}
+.btn-clean:hover { opacity: 1; transform: scale(1.05); background: #dc2626; }
+
+.btn-pill {
+    padding: 9px 18px;
+    border-radius: 12px;
+    font-weight: 900;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-import { background: #8b5cf6; color: white; }
+.btn-add { background: #1e293b; color: white; border: 1px solid #334155; }
+.btn-bdd { background: #4f46e5; color: white; }
+
+/* ... (Le reste du CSS est conservé) ... */
+
+.search-container {
+    background: white;
+    border-radius: 20px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 25px;
+    border: 1px solid #f1f5f9;
+}
+.search-input {
+    flex: 1; border: none; outline: none;
+    font-weight: 700; font-size: 1rem; color: #1e293b;
+}
+
+.item-card {
+    background: white; border-radius: 30px;
+    padding: 15px 25px; margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    border: 1px solid #f1f5f9;
+}
+.item-title { font-weight: 900; font-size: 1rem; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+.badge-niv { background: #2563eb; color: white; padding: 2px 6px; border-radius: 6px; font-size: 0.5rem; font-weight: 950; }
+.btn-gerer { background: #f5f3ff; color: #7c3aed; padding: 8px 15px; border-radius: 10px; font-size: 0.65rem; font-weight: 800; }
+.btn-modif { background: #f8fafc; color: #475569; padding: 8px 15px; border-radius: 10px; font-size: 0.65rem; font-weight: 800; }
+.btn-delete { background: #fff1f2; color: #e11d48; width: 35px; height: 35px; border-radius: 10px; font-size: 1rem; display: flex; align-items: center; justify-content: center; }
+
+.zoom-overlay { position: fixed; inset: 0; z-index: 20000; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; }
+.zoom-card { background: white; width: 600px; border-radius: 35px; overflow: hidden; box-shadow: 0 40px 100px rgba(0,0,0,0.5); }
+.admin-input { width: 100%; padding: 0.8rem 1.2rem; border-radius: 15px; border: 2px solid #f1f5f9; background: #f8fafc; font-weight: 700; font-size: 0.9rem; outline: none; }
+[[[£ END: client/src/features/admin/AdminDashboard.css £]]]
+
+[[[£ FILE: client/src/features/admin/AdminDashboard.jsx £]]]
+// @signatures: AdminDashboard, handleMagicImport, handleMembership, handleSave, loadData, toggleArrayItem
+import React, { useState, useEffect } from 'react';
+import DriveViewer from './components/DriveViewer';
+import './AdminDashboard.css';
+
+export default function AdminDashboard({ user }) {
+    const [view, setView] = useState('classes'); 
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [activeClassTab, setActiveClassTab] = useState('TOUS');
+    const [modalMode, setModalMode] = useState(null); 
+    const [currentItem, setCurrentItem] = useState(null);
+    
+    // UI STATES ( showDB retiré car géré par AdminPage )
+    const [showDrive, setShowDrive] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [showMagicModal, setShowMagicModal] = useState(false);
+    const [magicText, setMagicText] = useState("");
+    const [magicClass, setMagicClass] = useState("");
+    const [magicOption, setMagicOption] = useState("");
+    const [manageItem, setManageItem] = useState(null); 
+    const [memberSearch, setMemberSearch] = useState(""); 
+
+    const [filterSub, setFilterSub] = useState("");
+    const [filterClass, setFilterClass] = useState("");
+    const [filterGroup, setFilterGroup] = useState("");
+    
+    const [allClasses, setAllClasses] = useState([]);
+    const [allSubjects, setAllSubjects] = useState([]);
+    const [allStudents, setAllStudents] = useState([]); 
+
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const [rC, rS, rSt] = await Promise.all([
+                fetch('/api/admin/classrooms').then(r => r.json()),
+                fetch('/api/admin/subjects').then(r => r.json()),
+                fetch('/api/admin/students').then(r => r.json())
+            ]);
+            setAllClasses(rC || []);
+            setAllSubjects(rS || []);
+            setAllStudents(rSt || []);
+
+            const map = { 'classes': 'classrooms', 'groups': 'classrooms', 'teachers': 'teachers', 'students': 'students', 'staff': 'admins' };
+            const r = await fetch(`/api/admin/${map[view]}`);
+            if (r.ok) {
+                const data = await r.json();
+                let list = Array.isArray(data) ? data : [];
+                if (view === 'classes') list = list.filter(c => c.type === 'CLASS');
+                if (view === 'groups') list = list.filter(c => c.type === 'GROUP');
+                setItems(list);
+            }
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    };
+
+    useEffect(() => { loadData(); }, [view]);
+
+    const handleSave = async () => {
+        const map = { 'classes': 'classrooms', 'groups': 'classrooms', 'teachers': 'teachers', 'students': 'students', 'staff': 'admins' };
+        let dataToSend = { ...currentItem };
+        if (view === 'teachers') {
+            dataToSend.taughtSubjectsText = allSubjects.filter(s => dataToSend.taughtSubjects.includes(s._id)).map(s => s.name).join(', ');
+            dataToSend.assignedClassesText = allClasses.filter(c => dataToSend.assignedClasses.some(ac => (ac._id || ac) === c._id)).map(c => c.name).join(', ');
+            dataToSend.assignedClasses = dataToSend.assignedClasses.map(c => c._id || c);
+        }
+        await fetch(`/api/admin/${map[view]}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSend) });
+        setModalMode(null); loadData();
+    };
+
+    const handleResetActivities = async () => {
+        if (!confirm("⚠️ VOULEZ-VOUS VRAIMENT TOUT EFFACER ?")) return;
+        await fetch('/api/admin/maintenance/reset-content', { method: 'DELETE' });
+        loadData();
+    };
+
+    const filteredItems = items.filter(it => {
+        const searchMatch = (it.name || it.firstName || "").toLowerCase().includes(searchTerm.toLowerCase()) || (it.lastName || "").toLowerCase().includes(searchTerm.toLowerCase());
+        if (view === 'students' && activeClassTab !== 'TOUS') return searchMatch && it.currentClass === activeClassTab;
+        return searchMatch;
+    });
+
+    return (
+        <div className="admin-container animate-in fade-in">
+            {importing && <div className="zoom-overlay level-2"><div className="text-white font-black text-2xl animate-pulse">🔮 TRAITEMENT IA...</div></div>}
+            
+            {/* MODALES D'ACTIONS (Import / Membres / Création) - Identiques à V30 */}
+            {showMagicModal && ( <div className="zoom-overlay" onClick={() => setShowMagicModal(false)}> <div className="zoom-card !w-[800px]" onClick={e => e.stopPropagation()}> <div className="z-header"><h2 className="text-indigo-600 uppercase">🔮 Importation Magique</h2></div> <div className="z-body"> <div className="flex gap-4 mb-4"> <input className="admin-input flex-1" placeholder="Classe (ex: 6A)" value={magicClass} onChange={e => setMagicClass(e.target.value)} /> <input className="admin-input flex-1 border-orange-200" placeholder="Option (ex: BFI)" value={magicOption} onChange={e => setMagicOption(e.target.value)} /> </div> <textarea className="admin-input !h-[300px] font-mono text-xs" placeholder="Collez ici..." value={magicText} onChange={e => setMagicText(e.target.value)} /> </div> <div className="z-footer"> <button onClick={() => setShowMagicModal(false)} className="flex-1 py-4 bg-slate-100 rounded-xl font-black text-xs">ANNULER</button> <button onClick={async () => { if(!magicText) return; await fetch('/api/admin/import-magic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rawText: magicText, defaultClass: magicClass.toUpperCase(), forceOption: magicOption.toUpperCase() }) }); setShowMagicModal(false); loadData(); }} className="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black text-xs">LANCER</button> </div> </div> </div> )}
+            {manageItem && ( <div className="zoom-overlay" onClick={() => setManageItem(null)}> <div className="zoom-card" onClick={e => e.stopPropagation()}> <div className="z-header"><h2 className="text-xl font-black uppercase">Membres : {manageItem.name}</h2></div> <div className="z-body"> <div className="member-list custom-scrollbar"> {allStudents.filter(s => manageItem.type === 'CLASS' ? String(s.classId) === String(manageItem._id) : (s.assignedGroups || []).includes(manageItem._id)).map(s => ( <div key={s._id} className="member-row"><span>{s.firstName} {s.lastName}</span><button onClick={async () => { await fetch('/api/admin/membership', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentId: s._id, targetId: manageItem._id, type: manageItem.type, action: 'remove' }) }); loadData(); }} className="member-btn-remove">✕</button></div> ))} </div> <input className="admin-input" placeholder="Ajouter..." value={memberSearch} onChange={e => setMemberSearch(e.target.value)} /> {memberSearch.length > 1 && ( <div className="finder-results-mini"> {allStudents.filter(s => (s.firstName + s.lastName).toLowerCase().includes(memberSearch.toLowerCase())).slice(0, 5).map(p => ( <div key={p._id} className="finder-row-mini" onClick={async () => { await fetch('/api/admin/membership', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentId: p._id, targetId: manageItem._id, type: manageItem.type, action: 'add' }) }); setMemberSearch(""); loadData(); }}>{p.firstName} {p.lastName} <span className="text-indigo-600">+</span></div> ))} </div> )} </div> <div className="z-footer"><button onClick={() => setManageItem(null)} className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl text-xs">FERMER</button></div> </div> </div> )}
+            {modalMode && currentItem && ( <div className="zoom-overlay" onClick={() => setModalMode(null)}> <div className="zoom-card !w-[1000px] !max-w-none" onClick={e => e.stopPropagation()}> <div className="z-header"><h2>{modalMode === 'create' ? 'NOUVEAU' : 'MODIFIER'} {view.toUpperCase()}</h2></div> <div className="z-body space-y-4"> {view === 'teachers' ? ( <> <div className="flex gap-4"> <input className="admin-input flex-1" placeholder="Prénom" value={currentItem.firstName} onChange={e => setCurrentItem({...currentItem, firstName: e.target.value})} /> <input className="admin-input flex-1" placeholder="Nom" value={currentItem.lastName} onChange={e => setCurrentItem({...currentItem, lastName: e.target.value})} /> <input className="admin-input flex-1" placeholder="Mdp" value={currentItem.password} onChange={e => setCurrentItem({...currentItem, password: e.target.value})} /> </div> <div className="grid grid-cols-3 gap-6 pt-4 border-t"> <div className="col-selector"><span className="col-title">📚 MATIÈRES</span><input className="mini-filter" value={filterSub} onChange={e=>setFilterSub(e.target.value)} /><div className="scroll-list custom-scrollbar">{allSubjects.filter(s=>s.name.includes(filterSub.toUpperCase())).map(s=>(<button key={s._id} onClick={()=>{ const list = currentItem.taughtSubjects || []; setCurrentItem({...currentItem, taughtSubjects: list.includes(s._id) ? list.filter(x=>x!==s._id) : [...list, s._id]}); }} className={`select-btn ${currentItem.taughtSubjects?.includes(s._id)?'active':''}`}>{s.name}</button>))}</div></div> <div className="col-selector"><span className="col-title">🏫 CLASSES</span><input className="mini-filter" value={filterClass} onChange={e=>setFilterClass(e.target.value)} /><div className="scroll-list custom-scrollbar">{allClasses.filter(c=>c.type==='CLASS'&&c.name.includes(filterClass.toUpperCase())).map(c=>(<button key={c._id} onClick={()=>{ const list = currentItem.assignedClasses || []; const isInc = list.some(x=>(x._id||x)===c._id); setCurrentItem({...currentItem, assignedClasses: isInc ? list.filter(x=>(x._id||x)!==c._id) : [...list, c._id]}); }} className={`select-btn ${currentItem.assignedClasses?.some(ac=>(ac._id||ac)===c._id)?'active':''}`}>{c.name}</button>))}</div></div> <div className="col-selector"><span className="col-title">👥 GROUPES</span><input className="mini-filter" value={filterGroup} onChange={e=>setFilterGroup(e.target.value)} /><div className="scroll-list custom-scrollbar">{allClasses.filter(c=>c.type==='GROUP'&&c.name.includes(filterGroup.toUpperCase())).map(c=>(<button key={c._id} onClick={()=>{ const list = currentItem.assignedClasses || []; const isInc = list.some(x=>(x._id||x)===c._id); setCurrentItem({...currentItem, assignedClasses: isInc ? list.filter(x=>(x._id||x)!==c._id) : [...list, c._id]}); }} className={`select-btn ${currentItem.assignedClasses?.some(ac=>(ac._id||ac)===c._id)?'active':''}`}>{c.name}</button>))}</div></div> </div> </> ) : ( <div className="flex gap-4"> <input className="admin-input flex-1" placeholder="Nom / Libellé" value={currentItem.name || (currentItem.firstName + ' ' + currentItem.lastName)} onChange={e => { if(view === 'students') return; setCurrentItem({...currentItem, name: e.target.value}); }} /> </div> )} </div> <div className="z-footer"><button onClick={() => setModalMode(null)} className="flex-1 py-4 bg-slate-100 rounded-xl font-black text-xs">ANNULER</button><button onClick={handleSave} className="flex-1 py-4 bg-[#0f172a] text-white rounded-xl font-black text-xs shadow-xl">ENREGISTRER</button></div> </div> </div> )}
+
+            {/* --- BARRE D'OUTILS (PILL) SANS LE BOUTON BDD (QUI EST EN HAUT) --- */}
+            <div className="admin-toolbar-pill">
+                <div className="nav-links">
+                    {['classes', 'groups', 'subjects', 'teachers', 'students', 'staff'].map(v => (
+                        <button key={v} onClick={() => setView(v)} className={`nav-link ${view === v ? 'active' : ''}`}>{v}</button>
+                    ))}
+                </div>
+                <div className="action-buttons">
+                    <button onClick={handleResetActivities} className="btn-pill btn-clean">🔥 VIDER CONTENU</button>
+                    {(view === 'classes' || view === 'groups' || view === 'students') && ( <button onClick={() => setShowMagicModal(true)} className="btn-pill btn-import">🔮 IMPORT</button> )}
+                    <button onClick={handleOpenCreate} className="btn-pill btn-add">+ AJOUTER</button>
+                    <button onClick={() => setShowDrive(true)} className="btn-pill btn-bdd">☁️ DRIVE</button>
+                </div>
+            </div>
+
+            {/* RECHERCHE & CHIPS */}
+            <div className="search-container"><span className="text-xl">🔎</span><input className="search-input" placeholder={`Rechercher dans ${view}...`} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
+            {view === 'students' && ( <div className="class-filter-row no-scrollbar"> {['TOUS', ...allClasses.filter(c=>c.type==='CLASS').map(c=>c.name)].map(cls => ( <button key={cls} onClick={() => setActiveClassTab(cls)} className={`class-chip ${activeClassTab === cls ? 'active' : ''}`}>{cls}</button> ))} </div> )}
+
+            {/* LISTE DES CARDS */}
+            <div className="items-list">
+                {loading ? ( <div className="p-20 text-center animate-pulse text-slate-300 font-black uppercase">Chargement...</div> ) : filteredItems.map(it => (
+                    <div key={it._id} className="item-card">
+                        <div className="item-main">
+                            <span className="item-title"> {it.name || `${it.firstName} ${it.lastName}`} {it.level && <span className="badge-niv">NIV {it.level}</span>} {it.currentClass && <span className="badge-niv">{it.currentClass}</span>} </span>
+                            <span className="item-sub">{it.role || it.type || 'PROFIL'}</span>
+                        </div>
+                        <div className="item-actions">
+                            {(view === 'classes' || view === 'groups') && <button onClick={() => setManageItem(it)} className="btn-action btn-gerer">👥 GÉRER</button>}
+                            <button onClick={() => { setCurrentItem(it); setModalMode('edit'); }} className="btn-action btn-modif">MODIFIER</button>
+                            <button onClick={async () => { if(confirm("Supprimer ?")) { await fetch(`/api/admin/${view}/${it._id}`, {method:'DELETE'}); loadData(); } }} className="btn-action btn-delete">✕</button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {showDrive && <DriveViewer onClose={() => setShowDrive(false)} />}
+        </div>
+    );
+}
+[[[£ END: client/src/features/admin/AdminDashboard.jsx £]]]
 
 [[[£ FILE: client/src/features/admin/AdminPage.css £]]]
 .admin-page-wrapper {
@@ -756,6 +1070,7 @@ export default function App() {
     padding: 2rem;
     max-width: 1400px;
     margin: 0 auto;
+    font-family: 'Inter', sans-serif;
 }
 
 .admin-header-bar {
@@ -763,49 +1078,368 @@ export default function App() {
     justify-content: space-between;
     align-items: center;
     background: white;
-    padding: 1.5rem 2rem;
+    padding: 1.2rem 2.5rem;
     border-radius: 25px;
     margin-bottom: 2rem;
     box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05);
     border: 1px solid #e2e8f0;
 }
 
+.admin-identity {
+    display: flex;
+    flex-direction: column;
+}
+
 .admin-content-area {
-    /* Le Dashboard prend toute la place */
+    /* Espace de travail */
+}
+
+/* Animations de transition pour les pastilles */
+.bg-emerald-500, .bg-red-500, .bg-purple-500, .bg-slate-300 {
+    transition: background-color 0.3s ease;
+}
+
+@media (max-width: 768px) {
+    .admin-page-wrapper { padding: 1rem; }
+    .admin-header-bar { padding: 1rem; flex-direction: column; gap: 1rem; text-align: center; }
 }
 [[[£ END: client/src/features/admin/AdminPage.css £]]]
 
 [[[£ FILE: client/src/features/admin/AdminPage.jsx £]]]
-import React from 'react';
-import AdminDashboard from '../prof/admin/AdminDashboard'; // On réutilise le composant existant
+// @signatures: AdminPage, checkHealth, handleRefresh
+import React, { useState, useEffect } from 'react';
+import AdminDashboard from './AdminDashboard';
+import DatabaseViewer from './components/DatabaseViewer'; // ✅ Importé ici maintenant
 import './AdminPage.css';
 
 export default function AdminPage({ user, onLogout }) {
-  // Fonction vide pour le refresh car l'admin gère sa propre data
-  const handleRefresh = () => {};
+  const [dbStatus, setDbStatus] = useState('LOADING'); 
+  const [drive, setDrive] = useState({ ok: false, email: '', loading: true });
+  const [showDB, setShowDB] = useState(false); // ✅ État géré ici pour la fusion
+
+  const checkHealth = async () => {
+      try {
+          const resBoot = await fetch('/api/check-deploy');
+          const dataBoot = await resBoot.json();
+          setDbStatus(dataBoot.db === "CONNECTED" ? "OK" : "OFFLINE");
+
+          const resDrive = await fetch('/api/admin/drive-check');
+          const dataDrive = await resDrive.json();
+          setDrive({ ok: dataDrive.ok, email: dataDrive.email, loading: false });
+      } catch (e) {
+          setDbStatus("OFFLINE");
+          setDrive(prev => ({ ...prev, ok: false, loading: false }));
+      }
+  };
+
+  useEffect(() => {
+      checkHealth();
+      const timer = setInterval(checkHealth, 10000);
+      return () => clearInterval(timer);
+  }, []);
 
   return (
     <div className="admin-page-wrapper">
       <div className="admin-header-bar">
-        <div className="flex items-center gap-4">
-            <span className="text-3xl">🛡️</span>
-            <div>
-                <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Espace Administration</h1>
-                <p className="text-xs font-bold text-slate-400 uppercase">Bienvenue, {user.firstName}</p>
+        {/* --- GAUCHE : IDENTITÉ + BOUTON STATUT FUSIONNÉ --- */}
+        <div className="flex items-center gap-6">
+            <div className="admin-identity">
+                <div className="flex items-center gap-4">
+                    <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter leading-none">
+                        {user.firstName} {user.lastName}
+                    </h1>
+                    
+                    {/* ✅ BOUTON-PASTILLE BDD FUSIONNÉ */}
+                    <button 
+                        onClick={() => setShowDB(true)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 transition-all active:scale-95 ${
+                            dbStatus === 'OK' 
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-500 hover:text-white' 
+                            : (dbStatus === 'LOADING' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-red-50 border-red-200 text-red-600 animate-pulse')
+                        }`}
+                    >
+                        <div className={`w-2 h-2 rounded-full ${dbStatus === 'OK' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">📊 BDD</span>
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-3 mt-1.5 ml-0.5">
+                    <div className="flex items-center gap-1.5">
+                        <div className={`w-2 h-2 rounded-full ${drive.ok ? 'bg-purple-500' : 'bg-slate-300'}`}></div>
+                        <span className="text-[9px] font-bold uppercase text-slate-300 tracking-wider">
+                            {drive.ok ? `PRO : ${drive.email}` : 'DRIVE DÉCONNECTÉ'}
+                        </span>
+                    </div>
+                </div>
             </div>
         </div>
-        <button onClick={onLogout} className="bg-white text-slate-400 hover:text-red-500 px-4 py-2 rounded-xl font-black text-xs border border-slate-200 transition-colors">
-            DÉCONNEXION
-        </button>
+
+        {/* --- DROITE : ICONE + DÉCONNEXION --- */}
+        <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-xl shadow-lg">🛡️</div>
+            <button onClick={onLogout} className="bg-white text-slate-400 hover:text-red-500 px-4 py-2 rounded-xl font-black text-[10px] border border-slate-200 transition-all uppercase tracking-widest">
+                Déconnexion
+            </button>
+        </div>
       </div>
       
       <div className="admin-content-area">
-        <AdminDashboard user={user} onRefresh={handleRefresh} />
+        <AdminDashboard user={user} />
       </div>
+
+      {/* ✅ LA MODALE EST MAINTENANT APPELÉE DEPUIS LE HEADER */}
+      {showDB && <DatabaseViewer onClose={() => setShowDB(false)} />}
     </div>
   );
 }
 [[[£ END: client/src/features/admin/AdminPage.jsx £]]]
+
+[[[£ FILE: client/src/features/admin/components/DatabaseViewer.css £]]]
+.db-viewer-overlay { 
+    position: fixed; inset: 0; z-index: 20000; 
+    background: rgba(15, 23, 42, 0.95); 
+    display: flex; align-items: center; justify-content: center; padding: 2rem; 
+}
+
+.db-viewer-window { 
+    background: white; width: 95%; height: 90%; 
+    border-radius: 40px; display: flex; flex-direction: column; 
+    overflow: hidden; box-shadow: 0 50px 100px -20px rgba(0,0,0,0.5);
+}
+
+.db-header { 
+    padding: 1.5rem 2.5rem; 
+    border-bottom: 1px solid #f1f5f9; 
+    display: flex; justify-content: space-between; align-items: center; 
+}
+
+/* TABLEAU PROPRE ET COMPACT */
+.db-table-clean {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    table-layout: fixed; /* Force le respect des largeurs */
+}
+
+.db-table-clean th {
+    background: #f8fafc;
+    text-align: left;
+    padding: 12px 15px;
+    border: 1px solid #f1f5f9;
+    color: #94a3b8;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    width: 180px; /* Largeur fixe pour la clarté */
+}
+
+.db-table-clean td {
+    padding: 10px 15px;
+    border: 1px solid #f1f5f9;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.db-cell-wrapper {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
+.db-table-clean tr:hover td {
+    background-color: #f0f9ff;
+    color: #3b82f6;
+}
+
+/* 🔍 INSPECTEUR DE CELLULE */
+.db-inspector-overlay {
+    position: fixed; inset: 0;
+    z-index: 30000;
+    background: rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center;
+}
+
+.db-inspector-box {
+    background: white;
+    width: 600px;
+    max-height: 500px;
+    padding: 2rem;
+    border-radius: 30px;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+}
+
+.db-inspector-content {
+    background: #0f172a;
+    color: #38bdf8;
+    padding: 1.5rem;
+    border-radius: 15px;
+    font-size: 12px;
+    overflow: auto;
+    flex: 1;
+    margin: 0;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+[[[£ END: client/src/features/admin/components/DatabaseViewer.css £]]]
+
+[[[£ FILE: client/src/features/admin/components/DatabaseViewer.jsx £]]]
+// @signatures: DatabaseViewer, renderCell, handleCellClick
+import React, { useState, useEffect } from 'react';
+import './DatabaseViewer.css';
+
+export default function DatabaseViewer({ onClose }) {
+    const [data, setData] = useState(null);
+    const [activeTab, setActiveTab] = useState('');
+    const [loading, setLoading] = useState(true);
+    // ✅ État pour l'inspection d'une cellule
+    const [inspecting, setInspecting] = useState(null);
+
+    useEffect(() => {
+        fetch('/api/admin/database-dump')
+            .then(res => res.json())
+            .then(d => { 
+                setData(d); 
+                const keys = Object.keys(d || {});
+                if (keys.length > 0) setActiveTab(keys[0]);
+                setLoading(false); 
+            });
+    }, []);
+
+    if (loading) return <div className="db-viewer-overlay"><h2 className="text-white font-black animate-pulse">CHARGEMENT BDD...</h2></div>;
+
+    const currentData = data[activeTab] || [];
+    const allKeys = new Set();
+    currentData.forEach(row => Object.keys(row).forEach(k => { if(k !== '__v') allKeys.add(k); }));
+    const columns = Array.from(allKeys);
+
+    const handleCellClick = (val, colName) => {
+        if (val === null || val === undefined) return;
+        setInspecting({ title: colName, content: val });
+    };
+
+    return (
+        <div className="db-viewer-overlay" onClick={onClose}>
+            {/* 🔍 INSPECTEUR DE CELLULE (MODALE NIVEAU 2) */}
+            {inspecting && (
+                <div className="db-inspector-overlay" onClick={(e) => { e.stopPropagation(); setInspecting(null); }}>
+                    <div className="db-inspector-box animate-in zoom-in" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4 border-b pb-2">
+                            <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Détail du champ : {inspecting.title}</span>
+                            <button onClick={() => setInspecting(null)} className="text-slate-400 hover:text-slate-900 font-bold">FERMER</button>
+                        </div>
+                        <pre className="db-inspector-content custom-scrollbar">
+                            {typeof inspecting.content === 'object' 
+                                ? JSON.stringify(inspecting.content, null, 2) 
+                                : String(inspecting.content)}
+                        </pre>
+                        <button onClick={() => {
+                            navigator.clipboard.writeText(typeof inspecting.content === 'object' ? JSON.stringify(inspecting.content) : inspecting.content);
+                            alert("Copié !");
+                        }} className="mt-4 w-full py-2 bg-slate-100 text-slate-600 rounded-lg font-black text-[10px] uppercase hover:bg-indigo-50">Copier la valeur</button>
+                    </div>
+                </div>
+            )}
+
+            <div className="db-viewer-window" onClick={e => e.stopPropagation()}>
+                <div className="db-header">
+                    <div>
+                        <h2 className="font-black uppercase text-xl text-slate-800">Explorateur MongoDB</h2>
+                        <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Mode Interactif : Cliquez sur une case pour l'étendre</span>
+                    </div>
+                    <button onClick={onClose} className="w-10 h-10 bg-slate-100 rounded-full font-black hover:bg-red-500 hover:text-white transition-all">✕</button>
+                </div>
+                
+                <div className="db-tabs no-scrollbar flex gap-2 p-4 bg-slate-50 border-b overflow-x-auto">
+                    {Object.keys(data).sort().map(c => (
+                        <button key={c} onClick={() => setActiveTab(c)} className={`px-4 py-2 rounded-xl text-[10px] font-black whitespace-nowrap transition-all ${activeTab === c ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                            {c.toUpperCase()} ({data[c]?.length || 0})
+                        </button>
+                    ))}
+                </div>
+
+                <div className="db-table-container flex-1 overflow-auto custom-scrollbar">
+                    <table className="db-table-clean">
+                        <thead>
+                            <tr>
+                                {columns.map(col => <th key={col}>{col.toUpperCase()}</th>)}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {currentData.map((row, i) => (
+                                <tr key={i}>
+                                    {columns.map(col => {
+                                        const val = row[col];
+                                        const isObj = typeof val === 'object' && val !== null;
+                                        return (
+                                            <td key={col} onClick={() => handleCellClick(val, col)} className="db-interactive-cell">
+                                                <div className="db-cell-wrapper">
+                                                    {isObj ? `{ Object }` : (val === null || val === undefined ? '-' : String(val))}
+                                                </div>
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {currentData.length === 0 && <div className="p-20 text-center text-slate-300 font-bold uppercase italic">Collection vide</div>}
+                </div>
+            </div>
+        </div>
+    );
+}
+[[[£ END: client/src/features/admin/components/DatabaseViewer.jsx £]]]
+
+[[[£ FILE: client/src/features/admin/components/DriveViewer.css £]]]
+.drive-viewer-overlay { position: fixed; inset: 0; z-index: 20001; background: rgba(15, 23, 42, 0.95); display: flex; align-items: center; justify-content: center; padding: 2rem; }
+.drive-viewer-window { background: white; width: 80%; height: 80%; border-radius: 30px; display: flex; flex-direction: column; overflow: hidden; }
+[[[£ END: client/src/features/admin/components/DriveViewer.css £]]]
+
+[[[£ FILE: client/src/features/admin/components/DriveViewer.jsx £]]]
+import React, { useState, useEffect } from 'react';
+import './DriveViewer.css';
+
+export default function DriveViewer({ onClose }) {
+    const [tree, setTree] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetch('/api/structure/drive-tree')
+            .then(res => res.json())
+            .then(d => { setTree(d); setLoading(false); });
+    }, []);
+
+    return (
+        <div className="drive-viewer-overlay" onClick={onClose}>
+            <div className="drive-viewer-window" onClick={e => e.stopPropagation()}>
+                <div className="drive-header p-6 bg-slate-900 text-white flex justify-between items-center">
+                    <h2 className="font-black uppercase">Archive Cloud Condamine</h2>
+                    <button onClick={onClose} className="text-2xl">✕</button>
+                </div>
+                <div className="p-10 overflow-auto flex-1">
+                    {loading ? <div className="animate-pulse text-indigo-600 font-black">SCAN DU DRIVE...</div> : (
+                        <div className="space-y-2">
+                            {tree?.children?.map(child => (
+                                <div key={child.id} className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                    <span className="text-xl">{child.type === 'folder' ? '📁' : '📄'}</span>
+                                    <span className="font-bold text-slate-700">{child.name}</span>
+                                    <a href={child.link} target="_blank" rel="noreferrer" className="ml-auto text-indigo-500 font-black text-[10px]">OUVRIR</a>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+[[[£ END: client/src/features/admin/components/DriveViewer.jsx £]]]
 
 [[[£ FILE: client/src/features/auth/Login.css £]]]
 .login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background-color: #f8fafc; }
@@ -874,230 +1508,106 @@ export default function AdminPage({ user, onLogout }) {
 [[[£ END: client/src/features/auth/Login.css £]]]
 
 [[[£ FILE: client/src/features/auth/Login.jsx £]]]
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import './Login.css';
 
+/**
+ * 🔐 LOGIN ADMIN PURE
+ * Suppression du Finder Élève et du sélecteur de rôle.
+ */
 export default function Login({ onLoginSuccess }) {
-  const [mode, setMode] = useState(null);
-  
-  // --- FINDER STATE ---
-  const [allStudentsData, setAllStudentsData] = useState([]); // Données brutes légères
-  const [inputClass, setInputClass] = useState('');
-  const [inputLast, setInputLast] = useState('');
-  const [inputFirst, setInputFirst] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState(null);
-  const [suggestions, setSuggestions] = useState([]);
-  const [activeField, setActiveField] = useState(null);
-
-  // --- STAFF STATE ---
   const [fName, setFName] = useState('');
   const [lName, setLName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  
   const [loading, setLoading] = useState(false);
-
-  // Charger la liste légère au montage si mode élève
-  useEffect(() => {
-    if (mode === 'student') {
-        setLoading(true);
-        fetch('/api/auth/finder-data')
-            .then(res => res.json())
-            .then(data => {
-                setAllStudentsData(data);
-                setLoading(false);
-            })
-            .catch(() => setLoading(false));
-    }
-  }, [mode]);
-
-  // --- MOTEUR DE RECHERCHE CROISÉ ---
-  useEffect(() => {
-    if (selectedStudent) return; // Si déjà choisi, pas de suggestions
-
-    const clean = (str) => str.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    
-    const sClass = clean(inputClass);
-    const sLast = clean(inputLast);
-    const sFirst = clean(inputFirst);
-
-    if (!sClass && !sLast && !sFirst) {
-        setSuggestions([]);
-        return;
-    }
-
-    const matches = allStudentsData.filter(s => {
-        const matchClass = s.className ? clean(s.className).includes(sClass) : true;
-        const matchLast = s.lastName ? clean(s.lastName).includes(sLast) : true;
-        const matchFirst = s.firstName ? clean(s.firstName).includes(sFirst) : true;
-        return matchClass && matchLast && matchFirst;
-    });
-
-    setSuggestions(matches.slice(0, 8)); // Max 8 suggestions
-  }, [inputClass, inputLast, inputFirst, allStudentsData, selectedStudent]);
-
-  const handleSelectSuggestion = (s) => {
-      setSelectedStudent(s);
-      setInputClass(s.className || '');
-      setInputLast(s.lastName);
-      setInputFirst(s.firstName);
-      setSuggestions([]);
-  };
-
-  const handleReset = () => {
-      setSelectedStudent(null);
-      setInputClass('');
-      setInputLast('');
-      setInputFirst('');
-      setSuggestions([]);
-  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     
-    let roleToSend = 'STUDENT';
-    if (mode === 'teacher') roleToSend = 'TEACHER';
-    if (mode === 'admin') roleToSend = 'ADMIN';
-    
-    const body = (roleToSend === 'TEACHER' || roleToSend === 'ADMIN')
-        ? { role: roleToSend, firstName: fName, lastName: lName, password }
-        : { role: 'STUDENT', studentId: selectedStudent?.id };
-
     try {
         const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
-            body: JSON.stringify(body)
+            body: JSON.stringify({ 
+                role: 'ADMIN', // On force le rôle Admin pour cette interface
+                firstName: fName, 
+                lastName: lName, 
+                password 
+            })
         });
         const data = await res.json();
         
         if (res.ok) {
-            localStorage.setItem('player', JSON.stringify(data.user));
-            onLoginSuccess(data.user);
+            // On vérifie que c'est bien un Admin qui se connecte
+            if (data.user.role === 'admin' || data.user.isDeveloper) {
+                localStorage.setItem('player', JSON.stringify(data.user));
+                onLoginSuccess(data.user);
+            } else {
+                alert("Accès refusé : Cette interface est réservée aux administrateurs.");
+            }
         } else {
             alert(data.message || "Identifiants incorrects");
         }
-    } catch(e) { alert("Le serveur est injoignable."); }
+    } catch(e) { 
+        alert("Le serveur est injoignable."); 
+    }
     setLoading(false);
   };
 
-  // 1. ÉCRAN DE SÉLECTION DU RÔLE
-  if (!mode) {
-    return (
-        <div className="login-screen">
-            <div className="login-card">
-                <h1 className="app-logo">Condamine Pro</h1>
-                <p className="app-subtitle">Choisissez votre espace de connexion</p>
-                <div className="role-grid">
-                    <div className="role-card role-student" onClick={() => setMode('student')}>
-                        <span className="role-icon">👨‍🎓</span>
-                        <span className="role-label">Élève</span>
-                    </div>
-                    <div className="role-card role-teacher" onClick={() => setMode('teacher')}>
-                        <span className="role-icon">👨‍🏫</span>
-                        <span className="role-label">Enseignant</span>
-                    </div>
-                    <div className="role-card role-admin" onClick={() => setMode('admin')}>
-                        <span className="role-icon">🛡️</span>
-                        <span className="role-label">Administrateur</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-  }
-
-  // 2. FORMULAIRES
   return (
     <div className="login-screen">
       <div className="login-card narrow">
-        <button onClick={() => { setMode(null); handleReset(); }} className="back-btn">⬅ Changer de rôle</button>
-        
-        <h2 className="app-logo">
-            {mode === 'student' ? 'Espace Élève' : (mode === 'teacher' ? 'Espace Prof' : 'Administration')}
-        </h2>
+        <div className="mb-8">
+            <span className="text-5xl mb-4 block">🛡️</span>
+            <h1 className="app-logo">Condamine Admin</h1>
+            <p className="app-subtitle">Portail de gestion de l'établissement</p>
+        </div>
 
-        <form onSubmit={handleLogin} className="login-inputs mt-6">
-            
-            {/* --- MODE ÉLÈVE (NOUVEAU FINDER 3 CHAMPS) --- */}
-            {mode === 'student' && (
-                <>
-                    {!selectedStudent ? (
-                        <div className="finder-wrapper">
-                            {/* LIGNE 1 : CLASSE */}
-                            <input 
-                                className="login-field" 
-                                placeholder="Classe (ex: 6A)" 
-                                value={inputClass}
-                                onChange={e => setInputClass(e.target.value)}
-                                onFocus={() => setActiveField('class')}
-                            />
-                            
-                            {/* LIGNE 2 : NOM & PRENOM */}
-                            <div className="finder-row">
-                                <div className="finder-col-name">
-                                    <input 
-                                        className="login-field" 
-                                        placeholder="Nom" 
-                                        value={inputLast}
-                                        onChange={e => setInputLast(e.target.value)}
-                                        onFocus={() => setActiveField('last')}
-                                    />
-                                </div>
-                                <div className="finder-col-name">
-                                    <input 
-                                        className="login-field" 
-                                        placeholder="Prénom" 
-                                        value={inputFirst}
-                                        onChange={e => setInputFirst(e.target.value)}
-                                        onFocus={() => setActiveField('first')}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* LISTE DE SUGGESTIONS INTELLIGENTE */}
-                            {suggestions.length > 0 && (
-                                <div className="suggestions-box custom-scrollbar">
-                                    {suggestions.map(s => (
-                                        <div key={s.id} className="suggestion-item" onClick={() => handleSelectSuggestion(s)}>
-                                            <span>{s.firstName} <strong>{s.lastName}</strong></span>
-                                            <span className="suggestion-detail">{s.className}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            {suggestions.length === 0 && (inputClass || inputLast || inputFirst) && (
-                                <div className="text-xs text-slate-400 text-center italic">Aucun élève trouvé.</div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="selected-student-card animate-in">
-                            <span>✅ {selectedStudent.firstName} {selectedStudent.lastName} ({selectedStudent.className})</span>
-                            <button type="button" onClick={handleReset} className="reset-selection-btn">✕</button>
-                        </div>
-                    )}
-                </>
-            )}
-
-            {/* --- MODE STAFF --- */}
-            {(mode === 'teacher' || mode === 'admin') && (
-                <div className="space-y-4">
-                    <input className="login-field" placeholder="Prénom" value={fName} onChange={e=>setFName(e.target.value)} required />
-                    <input className="login-field" placeholder="Nom" value={lName} onChange={e=>setLName(e.target.value)} required />
-                    <div className="relative">
-                        <input type={showPassword ? "text" : "password"} className="login-field" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)} required />
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] uppercase font-black text-slate-400">
-                            {showPassword ? "Cacher" : "Voir"}
-                        </button>
-                    </div>
+        <form onSubmit={handleLogin} className="login-inputs">
+            <div className="space-y-4">
+                <input 
+                    className="login-field" 
+                    placeholder="Prénom" 
+                    value={fName} 
+                    onChange={e=>setFName(e.target.value)} 
+                    required 
+                />
+                <input 
+                    className="login-field" 
+                    placeholder="Nom" 
+                    value={lName} 
+                    onChange={e=>setLName(e.target.value)} 
+                    required 
+                />
+                <div className="relative">
+                    <input 
+                        type={showPassword ? "text" : "password"} 
+                        className="login-field" 
+                        placeholder="Mot de passe" 
+                        value={password} 
+                        onChange={e=>setPassword(e.target.value)} 
+                        required 
+                    />
+                    <button 
+                        type="button" 
+                        onClick={() => setShowPassword(!showPassword)} 
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] uppercase font-black text-slate-400"
+                    >
+                        {showPassword ? "Cacher" : "Voir"}
+                    </button>
                 </div>
-            )}
+            </div>
 
-            <button className="login-submit-btn" disabled={loading || (mode === 'student' && !selectedStudent)}>
-                {loading ? 'Connexion...' : 'Entrer'}
+            <button className="login-submit-btn" disabled={loading}>
+                {loading ? 'Vérification...' : 'Accéder à la console'}
             </button>
         </form>
+        
+        <p className="mt-8 text-[10px] text-slate-300 font-bold uppercase tracking-widest">
+            Accès sécurisé Build #V1.0
+        </p>
       </div>
     </div>
   );
@@ -6028,14 +6538,26 @@ export default function HomeworkStudio({ initialData, chapters, globalClass, use
 import React, { useState, useEffect, useRef } from 'react';
 import './ScansStudio.css';
 
+const SecureImage = ({ src, className, onClick }) => {
+    const [error, setError] = useState(false);
+    if (error) {
+        return (
+            <div className={`${className} bg-slate-100 flex flex-col items-center justify-center border-2 border-red-200 text-red-400 p-2 text-center`} title="Fichier perdu">
+                <span className="text-xl">⚠️</span>
+                <span className="text-[8px] font-black uppercase">Perdu</span>
+            </div>
+        );
+    }
+    return <img src={src} className={className} onClick={onClick} onError={() => setError(true)} alt="Scan" />;
+};
+
 export default function ScansStudio({ user }) {
     const [sessions, setSessions] = useState([]);
     const [chapters, setChapters] = useState([]);
     const [activePanels, setActivePanels] = useState({});
     
-    // ETATS MODALE & WORKFLOW
-    const [correctionModal, setCorrectionModal] = useState(null); // ID Session pour lancer correction
-    const [viewingCorrection, setViewingCorrection] = useState(null); // Objet correction pour affichage résultats
+    const [correctionModal, setCorrectionModal] = useState(null); 
+    const [viewingCorrection, setViewingCorrection] = useState(null); 
     const [instructions, setInstructions] = useState("");
     const [processing, setProcessing] = useState(false);
 
@@ -6078,16 +6600,21 @@ export default function ScansStudio({ user }) {
             const localUrl = URL.createObjectURL(blob);
             const snapId = Date.now();
             setSnapQueue(prev => [...prev, { id: snapId, url: localUrl, status: 'uploading' }]);
+            
             const formData = new FormData();
-            formData.append('file', blob, `snap_${snapId}.jpg`);
+            formData.append('file', blob, `scan_${snapId}.jpg`);
             formData.append('sessionId', sessionId);
-            // DISTINCTION CRUCIALE : SUJET ou COPIE
             formData.append('type', type === 'CAMERA_SUBJECT' ? 'SUBJECT' : 'COPY');
+            
             try {
-                await fetch('/api/scans/upload', { method: 'POST', body: formData });
+                const res = await fetch('/api/scans/upload', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error("Erreur Upload");
                 setSnapQueue(prev => prev.map(s => s.id === snapId ? { ...s, status: 'done' } : s));
                 loadSessions(); 
-            } catch(e) { /* Error */ }
+            } catch(e) { 
+                alert("Échec upload Drive.");
+                setSnapQueue(prev => prev.filter(s => s.id !== snapId));
+            }
         }, 'image/jpeg', 0.95);
     };
 
@@ -6098,7 +6625,7 @@ export default function ScansStudio({ user }) {
     };
 
     const handleDeleteSession = async (id) => {
-        if(!confirm("Supprimer ce dossier de scan ?")) return;
+        if(!confirm("Supprimer ?")) return;
         await fetch(`/api/scans/sessions/${id}`, { method: 'DELETE' });
         loadSessions();
     };
@@ -6109,75 +6636,70 @@ export default function ScansStudio({ user }) {
         loadSessions();
     };
 
-    // --- IA CORRECTION ---
     const openCorrectionModal = (sessionId) => {
         setCorrectionModal(sessionId);
-        setInstructions("Compare la copie au SUJET fourni. Note sur 20. Sois bienveillant mais précis sur les erreurs.");
+        setInstructions("Compare la copie au SUJET fourni. Note selon le barème (A+, A, B, C).");
     };
 
     const launchCorrection = async () => {
         if(!correctionModal) return;
         setProcessing(true);
         try {
-            await fetch(`/api/scans/correct/${correctionModal}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ instructions }) });
+            await fetch(`/api/scans/correct/${correctionModal}`, { 
+                method: 'POST', 
+                headers: {'Content-Type':'application/json'}, 
+                body: JSON.stringify({ instructions }) 
+            });
             await loadSessions();
             setCorrectionModal(null);
         } catch(e) { alert("Erreur IA"); }
         setProcessing(false);
     };
 
-    // --- VISUALISATION ---
-    const handleViewCopy = (session, copyUrl) => {
-        // Chercher si une correction existe pour cette URL
-        const correction = session.corrections?.find(c => c.originalUrl === copyUrl);
-        if (correction) {
-            setViewingCorrection(correction); // Ouvre la modale Split View
-        } else {
-            window.open(copyUrl, '_blank'); // Juste l'image
-        }
-    };
-
     return (
         <div className="scan-page">
-            
-            {/* MODALE RESULTAT SPLIT VIEW */}
             {viewingCorrection && (
                 <div className="correction-overlay" onClick={() => setViewingCorrection(null)}>
                     <div className="correction-card !w-[90vw] !max-w-6xl !h-[90vh]" onClick={e => e.stopPropagation()}>
                         <div className="corr-header">
                             <div>
                                 <h2 className="text-xl font-black uppercase text-white">{viewingCorrection.studentName}</h2>
-                                <span className="text-xs font-bold text-emerald-400">NOTE : {viewingCorrection.grade}</span>
+                                <span className={`text-sm font-black px-3 py-1 rounded-full ${
+                                    (viewingCorrection.grade || "").includes("A") ? "bg-green-500 text-white" :
+                                    (viewingCorrection.grade || "").includes("B") ? "bg-yellow-500 text-white" :
+                                    "bg-red-500 text-white"
+                                }`}>
+                                    NOTE : {viewingCorrection.grade}
+                                </span>
                             </div>
                             <button onClick={() => setViewingCorrection(null)} className="text-white text-2xl">✕</button>
                         </div>
                         <div className="corr-body flex">
-                            {/* GAUCHE : IMAGE */}
                             <div className="flex-1 bg-black flex items-center justify-center p-4">
-                                <img src={viewingCorrection.originalUrl} className="max-h-full max-w-full object-contain border-2 border-slate-700 rounded-lg" />
+                                <SecureImage src={viewingCorrection.originalUrl} className="max-h-full max-w-full object-contain border-2 border-slate-700 rounded-lg" />
                             </div>
-                            {/* DROITE : CORRECTION */}
                             <div className="flex-1 bg-white p-8 overflow-y-auto">
                                 <h4 className="text-sm font-black text-slate-400 uppercase mb-2">Appréciation Globale</h4>
                                 <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-900 font-medium mb-6">
                                     {viewingCorrection.appreciation}
                                 </div>
-                                <h4 className="text-sm font-black text-slate-400 uppercase mb-2">Analyse Détaillée</h4>
-                                <div className="prose prose-sm text-slate-600 whitespace-pre-wrap">
-                                    {viewingCorrection.transcription}
-                                </div>
+                                <h4 className="text-sm font-black text-slate-400 uppercase mb-2">Analyse Détaillée (Rouge = IA / Noir = Élève)</h4>
+                                {/* MODIFICATION CRITIQUE : Support du HTML pour les couleurs */}
+                                <div 
+                                    className="prose prose-sm text-slate-800 whitespace-pre-wrap font-mono text-xs p-4 bg-slate-50 border rounded-xl"
+                                    dangerouslySetInnerHTML={{ __html: viewingCorrection.transcription }}
+                                />
                             </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* MODALE LANCEMENT IA */}
             {correctionModal && (
                 <div className="scan-overlay animate-in">
                     <div className="scan-modal">
-                        <h3>🤖 CONFIGURATION CORRECTION</h3>
-                        <p className="text-xs text-slate-400 mb-2">L'IA va utiliser les images "SUJET" comme référence.</p>
+                        <h3>🤖 CORRECTION (Barème A+/A/B/C)</h3>
+                        <p className="text-xs text-slate-400 mb-2">L'IA va transcrire le texte en noir et commenter en rouge.</p>
                         <textarea className="scan-instr-input" value={instructions} onChange={e => setInstructions(e.target.value)} />
                         <div className="scan-modal-actions">
                             <button onClick={() => setCorrectionModal(null)} className="btn-cancel">ANNULER</button>
@@ -6191,7 +6713,6 @@ export default function ScansStudio({ user }) {
             
             {sessions.map(s => {
                 const active = activePanels[s._id];
-                const folderName = chapters.find(c => c._id === s.chapterId)?.title || "AUCUN DOSSIER";
                 const correctedCount = s.corrections ? s.corrections.length : 0;
 
                 return (
@@ -6199,9 +6720,7 @@ export default function ScansStudio({ user }) {
                         <div className="dc-header">
                             <div>
                                 <h3 style={{fontWeight:900}}>{s.title}</h3>
-                                <p className="text-xs text-slate-400 font-bold">
-                                    {s.subjectUrls?.length || 0} Sujets • {s.copyUrls.length} Copies • {correctedCount} Corrigés
-                                </p>
+                                <p className="text-xs text-slate-400 font-bold">{s.subjectUrls?.length || 0} Sujets • {s.copyUrls.length} Copies • {correctedCount} Corrigés</p>
                             </div>
                             <div className="dc-toolbar">
                                 <button className="tool-btn btn-sujet" onClick={() => togglePanel(s._id, 'CAMERA_SUBJECT')}>📄 SUJET</button>
@@ -6213,64 +6732,28 @@ export default function ScansStudio({ user }) {
                             </div>
                         </div>
 
-                        {/* ZONE DE VISUALISATION */}
                         {active === 'SHOW_ALL' && (
                             <div className="dc-content-area text-white">
-                                {/* SECTION SUJETS */}
                                 {s.subjectUrls?.length > 0 && (
-                                    <div className="mb-6">
-                                        <h4 className="font-bold mb-2 uppercase text-xs text-indigo-300">ÉNONCÉS / SUJETS DE RÉFÉRENCE</h4>
-                                        <div className="snap-queue-strip custom-scrollbar justify-start">
-                                            {s.subjectUrls.map((url, i) => (
-                                                <img key={i} src={url} className="queue-thumb border-indigo-500 border-2" onClick={() => window.open(url, '_blank')} />
-                                            ))}
-                                        </div>
-                                    </div>
+                                    <div className="mb-6"><h4 className="font-bold mb-2 uppercase text-xs text-indigo-300">SUJETS</h4><div className="snap-queue-strip custom-scrollbar justify-start">{s.subjectUrls.map((url, i) => (<SecureImage key={i} src={url} className="queue-thumb border-indigo-500 border-2" onClick={() => window.open(url, '_blank')} />))}</div></div>
                                 )}
-
-                                {/* SECTION COPIES */}
-                                <div>
-                                    <h4 className="font-bold mb-2 uppercase text-xs text-emerald-300">COPIES ÉLÈVES ({s.copyUrls.length})</h4>
-                                    <div className="snap-queue-strip custom-scrollbar justify-start flex-wrap">
-                                        {s.copyUrls.map((url, i) => {
-                                            const isCorrected = s.corrections?.some(c => c.originalUrl === url);
-                                            return (
-                                                <div key={i} className="relative group cursor-pointer" onClick={() => handleViewCopy(s, url)}>
-                                                    <img src={url} className={`queue-thumb ${isCorrected ? 'border-green-500' : 'border-slate-500'} border-2`} />
-                                                    {isCorrected && <div className="absolute top-0 right-0 bg-green-500 text-white text-[8px] font-black px-1 rounded-bl">OK</div>}
-                                                </div>
-                                            );
-                                        })}
-                                        {s.copyUrls.length === 0 && <span className="text-sm italic opacity-50">Aucune copie scannée.</span>}
-                                    </div>
-                                </div>
+                                <div><h4 className="font-bold mb-2 uppercase text-xs text-emerald-300">COPIES ({s.copyUrls.length})</h4><div className="snap-queue-strip custom-scrollbar justify-start flex-wrap">{s.copyUrls.map((url, i) => { const correction = s.corrections?.find(c => c.originalUrl === url); return (<div key={i} className="relative group cursor-pointer" onClick={() => { if(correction) setViewingCorrection(correction); else window.open(url, '_blank'); }}><SecureImage src={url} className={`queue-thumb ${correction ? 'border-green-500' : 'border-slate-500'} border-2`} />{correction && <div className="absolute top-0 right-0 bg-green-500 text-white text-[8px] font-black px-1 rounded-bl">{correction.grade || "OK"}</div>}</div>); })}</div></div>
                             </div>
                         )}
 
                         {active === 'DRIVE_SELECTION' && (
                             <div className="dc-content-area flex flex-col items-center gap-4 text-white">
-                                <h3>CHOISIR LE DOSSIER DE RANGEMENT</h3>
-                                <select className="p-3 rounded text-black font-bold" value={selectedFolderId} onChange={e => setSelectedFolderId(e.target.value)}>
-                                    <option value="">-- SÉLECTION --</option>
-                                    {relevantChapters.map(c => <option key={c._id} value={c._id}>{c.title}</option>)}
-                                </select>
-                                <button className="bg-green-500 text-white px-4 py-2 rounded font-black" onClick={() => handleLinkDrive(s._id)}>VALIDER LE RANGEMENT</button>
+                                <h3>CHOISIR LE DOSSIER</h3>
+                                <select className="p-3 rounded text-black font-bold" value={selectedFolderId} onChange={e => setSelectedFolderId(e.target.value)}><option value="">-- SÉLECTION --</option>{relevantChapters.map(c => <option key={c._id} value={c._id}>{c.title}</option>)}</select>
+                                <button className="bg-green-500 text-white px-4 py-2 rounded font-black" onClick={() => handleLinkDrive(s._id)}>VALIDER</button>
                             </div>
                         )}
 
                         {active && active.startsWith('CAMERA') && (
                             <div className="dc-content-area">
-                                <h4 className="text-center text-white font-black mb-2 uppercase">
-                                    {active === 'CAMERA_SUBJECT' ? "📸 SCANNER L'ÉNONCÉ (SUJET)" : "📸 SCANNER UNE COPIE ÉLÈVE"}
-                                </h4>
-                                <div className="cam-wrapper">
-                                    <video ref={videoRef} autoPlay playsInline className="cam-video" />
-                                    <canvas ref={canvasRef} style={{display:'none'}} />
-                                    <div className={`cam-trigger ${active === 'CAMERA_SUBJECT' ? 'border-indigo-500' : 'border-emerald-500'}`} onClick={() => takeSnap(s._id, active)}>⚪</div>
-                                </div>
-                                <div className="snap-queue-strip custom-scrollbar">
-                                    {snapQueue.map(sq => <img key={sq.id} src={sq.url} className={`queue-thumb ${sq.status}`} />)}
-                                </div>
+                                <h4 className="text-center text-white font-black mb-2 uppercase">{active === 'CAMERA_SUBJECT' ? "SUJET" : "COPIE ÉLÈVE"}</h4>
+                                <div className="cam-wrapper"><video ref={videoRef} autoPlay playsInline className="cam-video" /><canvas ref={canvasRef} style={{display:'none'}} /><div className={`cam-trigger ${active === 'CAMERA_SUBJECT' ? 'border-indigo-500' : 'border-emerald-500'}`} onClick={() => takeSnap(s._id, active)}>⚪</div></div>
+                                <div className="snap-queue-strip custom-scrollbar">{snapQueue.map(sq => <img key={sq.id} src={sq.url} className={`queue-thumb ${sq.status}`} />)}</div>
                             </div>
                         )}
                     </div>
@@ -7279,13 +7762,13 @@ setInterval(async () => {
 
 [[[£ FILE: package.json £]]]
 {
-  "name": "condamine-pro",
-  "version": "1.70.0",
+  "name": "condamine-admin",
+  "version": "1.0.0",
+  "private": true,
   "scripts": {
     "start": "node server/server.js",
     "server-dev": "nodemon --ignore 'update.txt' --ignore 'apply_status.json' server/server.js",
     "client": "npm run dev --prefix client",
-    "test": "node tests/integrity.test.js",
     "dev": "node apply.js & node magic-paste.js & npm run server-dev & npm run client",
     "build": "npm install --prefix client && npm run build --prefix client"
   },
@@ -7297,7 +7780,8 @@ setInterval(async () => {
     "mongoose": "7.8.2",
     "node-fetch": "^2.7.0",
     "multer": "^1.4.5-lts.1",
-    "clipboardy": "^4.0.0"
+    "clipboardy": "^4.0.0",
+    "nodemon": "^3.0.3"
   }
 }
 [[[£ END: package.json £]]]
@@ -7359,34 +7843,71 @@ header h1 { font-size: 1.3rem; color: var(--primary); margin: 0; }
 [[[£ END: public/style.css £]]]
 
 [[[£ FILE: server/core/ai.engine.js £]]]
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require("@google/generative-ai");
 
 /**
- * 🤖 MOTEUR IA CENTRALISÉ - V4 (GESTION ERREUR CLÉ)
- * Intercepte les clés expirées pour prévenir l'utilisateur.
+ * 🤖 MOTEUR IA - V21 (TEMPÉRATURE ZÉRO)
+ * Réglage strict pour empêcher l'IA de "délirer" en Anglais ou de changer le format.
  */
 const AIEngine = {
-    sanitizeJSON: (text) => {
-        try {
-            let clean = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
-            const startArray = clean.indexOf('[');
-            const startObj = clean.indexOf('{');
-            let startIdx = -1;
-            let endIdx = -1;
+    normalizeKeys: (obj) => {
+        if (typeof obj !== 'object' || obj === null) return obj;
+        if (Array.isArray(obj)) return obj.map(AIEngine.normalizeKeys);
+        return Object.keys(obj).reduce((acc, key) => {
+            acc[key.toLowerCase().trim()] = AIEngine.normalizeKeys(obj[key]);
+            return acc;
+        }, {});
+    },
 
-            if (startArray !== -1 && (startObj === -1 || startArray < startObj)) {
-                startIdx = startArray;
-                endIdx = clean.lastIndexOf(']') + 1;
-            } else if (startObj !== -1) {
-                startIdx = startObj;
-                endIdx = clean.lastIndexOf('}') + 1;
+    sanitizeJSON: (text) => {
+        if (!text) return { grade: "?", appreciation: "Vide.", transcription: "Rien." };
+
+        let clean = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+        
+        try {
+            const start = clean.indexOf('{');
+            const end = clean.lastIndexOf('}');
+            let parsed = null;
+
+            if (start !== -1 && end !== -1) {
+                parsed = JSON.parse(clean.substring(start, end + 1));
+            } else {
+                throw new Error("No JSON");
             }
 
-            if (startIdx === -1) throw new Error("Format JSON introuvable");
-            return JSON.parse(clean.substring(startIdx, endIdx));
+            const norm = AIEngine.normalizeKeys(parsed);
+
+            // Vérification des champs clés (si l'IA a mis "general_assessment" au lieu de "appreciation")
+            const appreciation = norm.appreciation || norm.general_assessment || norm.comment || "Pas d'avis";
+            const transcription = norm.transcription || norm.detailed_feedback || norm.text || "Pas de texte";
+            
+            // Si la transcription est un objet (le bug de tout à l'heure), on le stringify
+            let finalTrans = transcription;
+            if (typeof transcription === 'object') {
+                finalTrans = JSON.stringify(transcription, null, 2);
+            }
+
+            return {
+                studentname: norm.studentname || "Inconnu",
+                grade: norm.grade || norm.overall_grade || norm.note || "?",
+                appreciation: appreciation,
+                transcription: finalTrans,
+                mistakes: norm.mistakes || []
+            };
+
         } catch (e) { 
-            console.error("🔥 [AI-CORE] Échec parsing JSON. Brut :", text.substring(0, 100) + "...");
-            throw new Error("L'IA a renvoyé un format illisible."); 
+            console.warn("⚠️ Mode RAW.");
+            let htmlText = text
+                .replace(/\*\*(.*?)\*\*/g, '<span style="color:#ef4444; font-weight:bold;">$1</span>')
+                .replace(/\n/g, '<br/>');
+
+            return {
+                studentName: "Mode Texte",
+                grade: "?",
+                appreciation: "Format IA invalide.",
+                transcription: "🔴 CONTENU BRUT :\n\n" + htmlText, 
+                mistakes: []
+            };
         }
     },
 
@@ -7394,44 +7915,28 @@ const AIEngine = {
         const apiKey = process.env.GEMINI_API_KEY;
         const targetModel = "gemini-2.0-flash"; 
 
-        if (!apiKey || apiKey.includes('VOTRE_CLE')) {
-            console.error("❌ [AI-CORE] Clé API manquante ou par défaut.");
-            throw new Error("CLÉ API MANQUANTE DANS LE FICHIER .ENV");
-        }
-        
-        let logPrompt = "";
-        if (typeof prompt === 'string') {
-            logPrompt = prompt.substring(0, 50);
-        } else if (Array.isArray(prompt)) {
-            logPrompt = "MULTIMODAL (Image + Texte)";
-        } else {
-            logPrompt = "Objet complexe";
-        }
-
-        console.log(`📡 [AI-CORE] Appel Google | Modèle: ${targetModel} | Prompt: ${logPrompt}...`);
+        if (!apiKey) return "ERREUR CLÉ";
         
         try {
             const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ 
                 model: targetModel,
-                systemInstruction: systemInstruction 
+                systemInstruction: systemInstruction,
+                safetySettings: [
+                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                ],
+                // TEMPÉRATURE 0.1 : L'IA devient un robot logique, pas un poète.
+                // Cela réduit drastiquement le risque qu'elle parle anglais ou change le JSON.
+                generationConfig: { temperature: 0.1 }
             });
-            
             const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
-            
-            if (!text) throw new Error("Réponse Google vide");
-            return text;
+            return result.response.text();
         } catch (e) {
-            console.error(`💥 [AI-CORE] CRASH GOOGLE :`, e.message);
-            
-            // DÉTECTION SPÉCIFIQUE CLÉ EXPIRÉE
-            if (e.message.includes('API key expired') || e.message.includes('API_KEY_INVALID') || e.status === 400) {
-                throw new Error("⚠️ VOTRE CLÉ API EST PÉRIMÉE. Changez-la dans le fichier .env !");
-            }
-            
-            throw e;
+            console.error(`💥 CRASH GOOGLE :`, e.message);
+            return `ERREUR: ${e.message}`;
         }
     }
 };
@@ -7449,32 +7954,62 @@ let driveInstance = null;
 
 const DriveEngine = {
     oauth2Client: null,
+    
     init: () => {
         try {
             const clientID = process.env.GOOGLE_CLIENT_ID;
             const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-            const refresh = process.env.GOOGLE_REFRESH_TOKEN;
+            // On permet une redirection dynamique ou fixe
             const redirect = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/auth/google/callback";
+            
             if (clientID && clientSecret) {
                 oauth2Client = new google.auth.OAuth2(clientID, clientSecret, redirect);
+                DriveEngine.oauth2Client = oauth2Client; // Stockage public pour les routes Auth
+
+                const refresh = process.env.GOOGLE_REFRESH_TOKEN;
                 if (refresh) {
                     oauth2Client.setCredentials({ refresh_token: refresh });
                     driveInstance = google.drive({ version: 'v3', auth: oauth2Client });
-                    DriveEngine.oauth2Client = oauth2Client;
-                    console.log("✅ Drive Engine Ready V100.");
+                    console.log("✅ Drive Engine Initialisé.");
+                } else {
+                    console.warn("⚠️ Drive Engine : Pas de Refresh Token dans .env");
                 }
+            } else {
+                console.error("❌ Drive Engine : Client ID/Secret manquants.");
             }
         } catch (e) { console.error("Drive Init Error", e.message); }
     },
+
+    // --- MÉTHODES OAUTH (Pour regénérer le token) ---
+    getAuthUrl: () => {
+        if (!DriveEngine.oauth2Client) throw new Error("OAuth Client non initialisé");
+        return DriveEngine.oauth2Client.generateAuthUrl({
+            access_type: 'offline', // CRUCIAL pour avoir le Refresh Token
+            scope: ['https://www.googleapis.com/auth/drive.file'],
+            prompt: 'consent' // Force la génération du refresh token
+        });
+    },
+
+    getTokenFromCode: async (code) => {
+        if (!DriveEngine.oauth2Client) throw new Error("OAuth Client non initialisé");
+        const { tokens } = await DriveEngine.oauth2Client.getToken(code);
+        return tokens;
+    },
+
+    // --- MÉTHODES MÉTIER ---
     testAuth: async () => {
-        if (!driveInstance) return { ok: false, error: "Non configuré" };
+        if (!driveInstance) return { ok: false, error: "Non configuré (Token manquant)" };
         try {
             const res = await driveInstance.about.get({ fields: 'user(emailAddress)' });
             return { ok: true, email: res.data.user.emailAddress };
-        } catch (e) { return { ok: false, error: "Session expirée" }; }
+        } catch (e) { 
+            console.error("Test Auth Fail:", e.message);
+            return { ok: false, error: "Session expirée ou invalide. Regénérez le token." }; 
+        }
     },
+
     getOrCreateFolder: async (name, parentId = null) => {
-        if (!driveInstance) throw new Error("Drive non prêt");
+        if (!driveInstance) throw new Error("Drive non connecté. Vérifiez le token.");
         const cleanName = name.toUpperCase().trim();
         try {
             let q = `name = '${cleanName.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
@@ -7488,17 +8023,13 @@ const DriveEngine = {
             return folder.data.id;
         } catch (e) { throw e; }
     },
-    /**
-     * V100 : UPLOAD AVEC GÉNÉRATION DE LIEN DIRECT "UC"
-     * Format : https://drive.google.com/uc?export=view&id={FILE_ID}
-     */
+
     uploadFile: async (fileName, localPath, parentFolderId) => {
-        if (!driveInstance) throw new Error("Drive Instance missing");
+        if (!driveInstance) throw new Error("Drive non connecté.");
         try {
             const fileMetadata = { name: fileName, parents: [parentFolderId] };
             const media = { body: fs.createReadStream(localPath) };
             
-            // 1. Upload du fichier
             const file = await driveInstance.files.create({
                 resource: fileMetadata,
                 media: media,
@@ -7506,48 +8037,102 @@ const DriveEngine = {
             });
 
             const fileId = file.data.id;
-
-            // 2. RENDRE LE FICHIER LISIBLE (Indispensable pour l'affichage élève)
             await driveInstance.permissions.create({
                 fileId: fileId,
                 resource: { role: 'reader', type: 'anyone' }
             });
 
-            // 3. RETOURNER L'URL DE VUE DIRECTE
-            const directUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
-            return { id: fileId, link: directUrl };
+            return { id: fileId, link: `https://drive.google.com/uc?export=view&id=${fileId}` };
 
         } catch (e) {
-            console.error("❌ Drive Upload Fail V100:", e.message);
+            console.error("❌ Drive Upload Fail:", e.message);
+            throw e;
+        }
+    },
+
+    getFileStream: async (fileId) => {
+        try {
+            // On recrée une instance légère pour le stream si besoin, ou on utilise l'existante
+            const drive = google.drive({ version: 'v3', auth: DriveEngine.oauth2Client });
+            const res = await drive.files.get(
+                { fileId: fileId, alt: 'media' },
+                { responseType: 'stream' }
+            );
+            return res.data;
+        } catch (e) {
             throw e;
         }
     }
 };
+
 DriveEngine.init();
 module.exports = DriveEngine;
 [[[£ END: server/core/drive.engine.js £]]]
 
+[[[£ FILE: server/core/ocr.engine.js £]]]
+const fetch = require('node-fetch');
+
+/**
+ * 👁️ MOTEUR OCR V2 (AVEC RETOUR D'ERREUR)
+ * Renvoie l'erreur exacte si Google refuse de lire.
+ */
+const OCREngine = {
+    extractText: async (base64Image) => {
+        const apiKey = process.env.GEMINI_API_KEY;
+        const url = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
+
+        const body = {
+            requests: [{
+                image: { content: base64Image },
+                features: [{ type: "DOCUMENT_TEXT_DETECTION" }]
+            }]
+        };
+
+        try {
+            console.log("🔍 [OCR] Appel Google Vision...");
+            const response = await fetch(url, {
+                method: 'POST',
+                body: JSON.stringify(body),
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const data = await response.json();
+            
+            // SI ERREUR API (Clé invalide, API non activée...)
+            if (data.error) {
+                console.error("❌ [OCR] Erreur API :", data.error.message);
+                return { success: false, error: data.error.message };
+            }
+
+            const fullText = data.responses[0]?.fullTextAnnotation?.text;
+            if (!fullText) {
+                return { success: true, text: "" }; // Image lue mais vide
+            }
+
+            return { success: true, text: fullText };
+
+        } catch (e) {
+            return { success: false, error: "Crash Réseau: " + e.message };
+        }
+    }
+};
+
+module.exports = OCREngine;
+[[[£ END: server/core/ocr.engine.js £]]]
+
 [[[£ FILE: server/domains/admin/admin.routes.js £]]]
+// @signatures: AdminRoutes, database-dump, drive-check
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
-const AdminExpert = require('./experts/admin.expert');
 const AdminAI = require('./ai/admin.ai');
-const StructureDrive = require('../structure/experts/structure.drive');
+const AdminExpert = require('./experts/admin.expert');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-const tempDir = path.join(process.cwd(), 'public', 'uploads', 'temp');
-if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-const upload = multer({ dest: tempDir });
-
 const normalizeClassName = (name) => {
-    if (!name) return "";
+    if (!name) return "UNKNOWN";
     let s = name.toUpperCase().trim();
-    if (s === "UNKNOWN") return ""; 
     s = s.replace(/^(TERMINALE|TERM)\s*/, 'T');
     s = s.replace(/(\d+)\s*(?:E|EME|ÈME|ÉME|ERE|ÈRE|IER|IÈRE|NDE|ND)\s*([A-Z]?)/g, '$1$2');
     s = s.replace(/[\s\-\._]/g, '');
@@ -7561,49 +8146,111 @@ const guessLevel = (name) => {
     return match ? match[0] : "AUTRE";
 };
 
-// --- ⚠️ ZONE PRIORITAIRE : ROUTES SPÉCIFIQUES AVANT LES ROUTES GÉNÉRIQUES ---
+// --- 🛠️ ROUTES DE DIAGNOSTIC (RESTAURÉES) ---
 
-// --- RESET CONTENT (V442 BLINDÉ) ---
-router.delete('/maintenance/reset-content', asyncHandler(async (req, res) => {
-    console.log("🔥 [ADMIN] Grand Nettoyage des Activités demandé.");
-    try {
-        await mongoose.model('Homework').deleteMany({});
-        await mongoose.model('Submission').deleteMany({});
-        await mongoose.model('GameLevel').deleteMany({});
-        await mongoose.model('GameProgress').deleteMany({});
-        await mongoose.model('ScanSession').deleteMany({});
-        
-        console.log("✅ Nettoyage terminé.");
-        res.json({ ok: true, message: "Base de données nettoyée : Tous les devoirs, jeux et scans ont été supprimés." });
-    } catch (e) {
-        console.error("❌ Erreur Nettoyage:", e);
-        res.status(500).json({ error: "Erreur DB: " + e.message });
-    }
+router.get('/drive-check', asyncHandler(async (req, res) => {
+    const DriveEngine = require('../../core/drive.engine');
+    res.json(await DriveEngine.testAuth());
 }));
 
-router.post('/maintenance/migrate-students', asyncHandler(async (req, res) => { const StudentModel = mongoose.model('Student'); const ClassroomModel = mongoose.model('Classroom'); const students = await StudentModel.find({}); let splitCount = 0; for (const s of students) { let lvl = s.currentLevel || s.level; if (!lvl && s.currentClass) lvl = guessLevel(s.currentClass); await StudentModel.updateOne({ _id: s._id }, { $set: { currentLevel: lvl || "AUTRE", level: lvl || "AUTRE" } }); } const allGroups = await ClassroomModel.find({ type: 'GROUP' }); for (const group of allGroups) { const members = await StudentModel.find({ assignedGroups: group._id }); if (members.length === 0) continue; const classesInGroup = {}; members.forEach(m => { const cls = m.currentClass || "UNKNOWN"; if (!classesInGroup[cls]) classesInGroup[cls] = []; classesInGroup[cls].push(m); }); const classNames = Object.keys(classesInGroup); if (classNames.length > 1 || (classNames.length === 1 && !group.name.startsWith(classNames[0]))) { for (const clsName of classNames) { const cleanSuffix = group.name.replace(clsName, '').trim(); const newName = `${clsName} ${cleanSuffix}`.trim(); const level = guessLevel(clsName); const mainClass = await ClassroomModel.findOne({ name: clsName, type: 'CLASS' }); const newGroup = await ClassroomModel.findOneAndUpdate({ name: newName, type: 'GROUP' }, { name: newName, type: 'GROUP', level: level, associatedClasses: mainClass ? [mainClass._id] : [] }, { upsert: true, new: true }); const studentsToMove = classesInGroup[clsName]; for (const stu of studentsToMove) { await StudentModel.updateOne({ _id: stu._id }, { $pull: { assignedGroups: group._id }, $addToSet: { assignedGroups: newGroup._id } }); } } await ClassroomModel.findByIdAndDelete(group._id); splitCount++; } } res.json({ ok: true, message: `Maintenance : ${splitCount} groupes nettoyés.` }); }));
+router.get('/database-dump', asyncHandler(async (req, res) => {
+    // Cette méthode utilise AdminExpert pour scanner toutes les collections
+    res.json(await AdminExpert.getFullDump());
+}));
 
-// --- ROUTES STANDARDS ---
-router.get('/drive-check', asyncHandler(async (req, res) => res.json(await AdminExpert.checkDriveStatus())));
-router.get('/database-dump', asyncHandler(async (req, res) => res.json(await AdminExpert.getFullDump())));
-router.get('/classrooms', asyncHandler(async (req, res) => { const classes = await mongoose.model('Classroom').find({}).lean(); res.json(classes.sort((a, b) => a.name.localeCompare(b.name))); }));
-router.post('/classrooms', asyncHandler(async (req, res) => { const name = normalizeClassName(req.body.name); let level = req.body.level ? req.body.level.toUpperCase().trim() : guessLevel(name); const cls = await mongoose.model('Classroom').findOneAndUpdate({ name }, { ...req.body, name, level }, { upsert: true, new: true }); await StructureDrive.syncBaseStructure(); res.json(cls); }));
-router.get('/subjects', asyncHandler(async (req, res) => res.json(await mongoose.model('Subject').find({}).sort({ name: 1 }).lean())));
-router.post('/subjects', asyncHandler(async (req, res) => { res.json(await mongoose.model('Subject').findOneAndUpdate({ name: req.body.name.toUpperCase().trim() }, { name: req.body.name.toUpperCase().trim(), color: req.body.color || '#6366f1' }, { upsert: true, new: true })); }));
-router.get('/teachers', asyncHandler(async (req, res) => res.json(await mongoose.model('Teacher').find({}).sort({ lastName: 1 }).lean())));
-router.get('/teachers/:id', asyncHandler(async (req, res) => { if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "ID Invalide" }); let user = await mongoose.model('Teacher').findById(req.params.id).lean() || await mongoose.model('Admin').findById(req.params.id).lean() || await mongoose.model('Student').findById(req.params.id).lean(); if (!user) return res.status(404).json({ error: "Utilisateur introuvable" }); res.json(user); }));
-router.post('/teachers', asyncHandler(async (req, res) => { let teacher; if (req.body._id) teacher = await mongoose.model('Teacher').findByIdAndUpdate(req.body._id, req.body, { new: true }); else teacher = await mongoose.model('Teacher').create(req.body); res.json(teacher); }));
-router.get('/students', asyncHandler(async (req, res) => res.json(await mongoose.model('Student').find({}).sort({ lastName: 1 }).lean())));
-router.post('/students', asyncHandler(async (req, res) => { const data = { ...req.body, fullName: `${req.body.firstName} ${req.body.lastName}` }; if (data.classId && !data.currentLevel) { const cls = await mongoose.model('Classroom').findById(data.classId); if (cls && cls.level) data.currentLevel = cls.level; } let student; if (data._id) student = await mongoose.model('Student').findByIdAndUpdate(data._id, data, { new: true }); else { const exists = await mongoose.model('Student').findOne({ firstName: new RegExp(`^${data.firstName.trim()}$`, 'i'), lastName: new RegExp(`^${data.lastName.trim()}$`, 'i'), classId: data.classId }); if (exists) return res.status(409).json({ error: "Cet élève existe déjà." }); student = await mongoose.model('Student').create(data); } if (data.classId) { let year = await mongoose.model('AcademicYear').findOne({ isCurrent: true }); if (!year) year = await mongoose.model('AcademicYear').create({ label: "2025-2026", isCurrent: true }); await mongoose.model('Enrollment').deleteMany({ studentId: student._id }); await mongoose.model('Enrollment').create({ studentId: student._id, classId: data.classId, yearId: year._id }); } res.json(student); }));
-router.get('/admins', asyncHandler(async (req, res) => res.json(await mongoose.model('Admin').find({}).sort({ lastName: 1 }).lean())));
-router.post('/admins', asyncHandler(async (req, res) => { const result = req.body._id ? await mongoose.model('Admin').findByIdAndUpdate(req.body._id, req.body, { new: true }) : await mongoose.model('Admin').create(req.body); res.json(result); }));
+// --- ROUTES DE GESTION ---
 
-// --- ATTENTION : ROUTE GÉNÉRIQUE DOIT ÊTRE EN DERNIER ---
-router.delete('/:collection/:id', asyncHandler(async (req, res) => { const map = { 'classrooms': 'Classroom', 'teachers': 'Teacher', 'admins': 'Admin', 'subjects': 'Subject', 'students': 'Student' }; if (map[req.params.collection]) { await mongoose.model(map[req.params.collection]).findByIdAndDelete(req.params.id); if (req.params.collection === 'students') await mongoose.model('Enrollment').deleteMany({ studentId: req.params.id }); if (req.params.collection === 'classrooms') { await mongoose.model('Student').deleteMany({ classId: req.params.id }); await mongoose.model('Enrollment').deleteMany({ classId: req.params.id }); await mongoose.model('Classroom').deleteMany({ associatedClasses: req.params.id }); } } res.json({ ok: true }); }));
+router.get('/classrooms', asyncHandler(async (req, res) => {
+    res.json(await mongoose.model('Classroom').find({}).sort({ name: 1 }).lean());
+}));
 
-router.post('/membership', asyncHandler(async (req, res) => { const { studentId, targetId, type, action } = req.body; const Student = mongoose.model('Student'); const Classroom = mongoose.model('Classroom'); const Enrollment = mongoose.model('Enrollment'); const AcademicYear = mongoose.model('AcademicYear'); if (type === 'CLASS') { if (action === 'add') { const cls = await Classroom.findById(targetId); if (!cls) return res.status(404).json({ error: "Classe introuvable" }); await Student.findByIdAndUpdate(studentId, { classId: cls._id, currentClass: cls.name, currentLevel: cls.level || guessLevel(cls.name) }); let year = await AcademicYear.findOne({ isCurrent: true }); if (!year) year = await AcademicYear.create({ label: "2025-2026", isCurrent: true }); await Enrollment.deleteMany({ studentId }); await Enrollment.create({ studentId, classId: cls._id, yearId: year._id }); } else if (action === 'remove') { await Student.findByIdAndUpdate(studentId, { classId: null, currentClass: "SANS CLASSE", currentLevel: "AUTRE" }); await Enrollment.deleteMany({ studentId }); } } else if (type === 'GROUP') { if (action === 'add') await Student.findByIdAndUpdate(studentId, { $addToSet: { assignedGroups: targetId } }); else if (action === 'remove') await Student.findByIdAndUpdate(studentId, { $pull: { assignedGroups: targetId } }); } res.json({ ok: true }); }));
-router.post('/import-csv', upload.single('file'), asyncHandler(async (req, res) => { if (!req.file) return res.status(400).json({ error: "Fichier manquant" }); const rawText = fs.readFileSync(req.file.path, 'utf8'); try { fs.unlinkSync(req.file.path); } catch(e) {} const { defaultClass, forceClass, forceOption } = req.body; const isForceClass = (forceClass === 'true' || forceClass === true); const targetClassName = normalizeClassName(defaultClass || "UNKNOWN"); try { const studentsData = await AdminAI.parseRawStudentData(rawText, targetClassName); if (!Array.isArray(studentsData) || studentsData.length === 0) return res.status(400).json({ error: "L'IA n'a rien trouvé." }); let createdCount = 0; let year = await mongoose.model('AcademicYear').findOne({ isCurrent: true }) || await mongoose.model('AcademicYear').create({ label: "2025-2026", isCurrent: true }); let forcedGroupId = null; if (forceOption && forceOption.trim().length > 0) { const forcedName = forceOption.toUpperCase().trim(); const lvl = guessLevel(forcedName) !== "AUTRE" ? guessLevel(forcedName) : guessLevel(defaultClass); const group = await mongoose.model('Classroom').findOneAndUpdate({ name: forcedName, type: 'GROUP' }, { name: forcedName, type: 'GROUP', level: lvl }, { upsert: true, new: true }); forcedGroupId = group._id; } for (const s of studentsData) { try { if (!s.lastName) continue; let className = ""; if (isForceClass && targetClassName !== "UNKNOWN") className = targetClassName; else className = normalizeClassName(s.className) || targetClassName; if (!className || className === "UNKNOWN") className = "UNKNOWN"; const level = guessLevel(className); let mainClass = await mongoose.model('Classroom').findOneAndUpdate({ name: className }, { name: className, type: 'CLASS', level: level }, { upsert: true, new: true }); const assignedGroupIds = []; const rawOptions = Array.isArray(s.options) ? s.options : []; for (const optName of rawOptions) { const cleanOpt = String(optName).toUpperCase().trim(); if (cleanOpt.length < 2 || cleanOpt.includes('/')) continue; const scopedGroupName = `${className} ${cleanOpt}`; const group = await mongoose.model('Classroom').findOneAndUpdate({ name: scopedGroupName, type: 'GROUP' }, { name: scopedGroupName, type: 'GROUP', level: level, associatedClasses: [mainClass._id] }, { upsert: true, new: true }); assignedGroupIds.push(group._id); } if (forcedGroupId) assignedGroupIds.push(forcedGroupId); const query = (s.email && s.email.includes('@')) ? { email: s.email } : { firstName: new RegExp(`^${s.firstName}$`, 'i'), lastName: new RegExp(`^${s.lastName}$`, 'i') }; const student = await mongoose.model('Student').findOneAndUpdate(query, { firstName: s.firstName, lastName: s.lastName, fullName: `${s.firstName} ${s.lastName}`, email: s.email, currentClass: className, classId: mainClass._id, level: level, currentLevel: level, assignedGroups: assignedGroupIds }, { upsert: true, new: true }); await mongoose.model('Enrollment').deleteMany({ studentId: student._id }); await mongoose.model('Enrollment').create({ studentId: student._id, classId: mainClass._id, yearId: year._id }); createdCount++; } catch (innerErr) { console.error("Err:", innerErr); } } await StructureDrive.syncBaseStructure(); res.json({ ok: true, message: `Import: ${createdCount} élèves.` }); } catch (e) { res.status(500).json({ error: e.message }); } }));
-router.post('/import-magic', asyncHandler(async (req, res) => { const { rawText, defaultClass, forceOption } = req.body; if (!rawText || rawText.length < 5) return res.status(400).json({ error: "Texte vide." }); const ClassModel = mongoose.model('Classroom'); const StudentModel = mongoose.model('Student'); const EnrollmentModel = mongoose.model('Enrollment'); const AcademicYearModel = mongoose.model('AcademicYear'); try { const studentsData = await AdminAI.parseRawStudentData(rawText, defaultClass || "UNKNOWN"); if (!Array.isArray(studentsData) || studentsData.length === 0) return res.status(400).json({ error: "L'IA n'a rien trouvé." }); let createdCount = 0; let year = await AcademicYearModel.findOne({ isCurrent: true }); if (!year) year = await AcademicYearModel.create({ label: "2025-2026", isCurrent: true }); let forcedGroupId = null; if (forceOption && forceOption.trim().length > 0) { const forcedName = forceOption.toUpperCase().trim(); const lvl = guessLevel(forcedName) !== "AUTRE" ? guessLevel(forcedName) : (defaultClass ? guessLevel(defaultClass) : "AUTRE"); const group = await ClassModel.findOneAndUpdate({ name: forcedName, type: 'GROUP' }, { name: forcedName, type: 'GROUP', level: lvl }, { upsert: true, new: true }); forcedGroupId = group._id; } for (const s of studentsData) { try { if (!s.lastName) continue; let className = normalizeClassName(s.className); if (!className || className === "UNKNOWN") { if (defaultClass && defaultClass !== "UNKNOWN") className = normalizeClassName(defaultClass); else className = "UNKNOWN"; } const level = guessLevel(className); let mainClass = await ClassModel.findOneAndUpdate({ name: className }, { name: className, type: 'CLASS', level: level }, { upsert: true, new: true }); const assignedGroupIds = []; const rawOptions = Array.isArray(s.options) ? s.options : []; for (const optName of rawOptions) { const cleanOpt = String(optName).toUpperCase().trim(); if (cleanOpt.length < 2 || cleanOpt.includes('/')) continue; const scopedGroupName = `${className} ${cleanOpt}`; const group = await ClassModel.findOneAndUpdate({ name: scopedGroupName, type: 'GROUP' }, { name: scopedGroupName, type: 'GROUP', level: level, associatedClasses: [mainClass._id] }, { upsert: true, new: true }); assignedGroupIds.push(group._id); } if (forcedGroupId) assignedGroupIds.push(forcedGroupId); const fName = s.firstName || "."; const lName = s.lastName; const query = (s.email && s.email.includes('@')) ? { email: s.email } : { firstName: new RegExp(`^${fName}$`, 'i'), lastName: new RegExp(`^${lName}$`, 'i') }; const student = await StudentModel.findOneAndUpdate(query, { firstName: fName, lastName: lName, fullName: `${fName} ${lName}`, email: s.email, currentClass: className, classId: mainClass._id, level: level, currentLevel: level, assignedGroups: assignedGroupIds, isTestAccount: false }, { upsert: true, new: true }); await EnrollmentModel.deleteMany({ studentId: student._id }); await EnrollmentModel.create({ studentId: student._id, classId: mainClass._id, yearId: year._id }); createdCount++; } catch (innerErr) { console.error("Err student:", innerErr); } } await StructureDrive.syncBaseStructure(); res.json({ ok: true, message: `Magie Textuelle : ${createdCount} élèves importés.` }); } catch (e) { res.status(500).json({ error: e.message }); } }));
+router.post('/classrooms', asyncHandler(async (req, res) => {
+    const name = normalizeClassName(req.body.name);
+    const level = req.body.level || guessLevel(name);
+    const cls = await mongoose.model('Classroom').findOneAndUpdate(
+        { name, type: req.body.type || 'CLASS' },
+        { ...req.body, name, level },
+        { upsert: true, new: true }
+    );
+    res.json(cls);
+}));
+
+router.post('/import-magic', asyncHandler(async (req, res) => {
+    const { rawText, defaultClass, forceOption } = req.body;
+    const Classroom = mongoose.model('Classroom');
+    const Student = mongoose.model('Student');
+    const Enrollment = mongoose.model('Enrollment');
+    const AcademicYear = mongoose.model('AcademicYear');
+
+    try {
+        const studentsData = await AdminAI.parseRawStudentData(rawText, defaultClass || "UNKNOWN");
+        let createdCount = 0;
+        let year = await AcademicYear.findOne({ isCurrent: true }) || await AcademicYear.create({ label: "2025-2026", isCurrent: true });
+
+        for (const s of studentsData) {
+            let className = normalizeClassName(s.className || defaultClass);
+            let level = guessLevel(className);
+            let mainClass = await Classroom.findOneAndUpdate({ name: className, type: 'CLASS' }, { name: className, type: 'CLASS', level }, { upsert: true, new: true });
+            
+            const assignedGroupIds = [];
+            const rawOptions = Array.isArray(s.options) ? s.options : [];
+            if (forceOption) rawOptions.push(forceOption);
+
+            for (const optName of rawOptions) {
+                const groupName = `${className} ${optName.toUpperCase().trim()}`;
+                const group = await Classroom.findOneAndUpdate({ name: groupName, type: 'GROUP' }, { name: groupName, type: 'GROUP', level, associatedClasses: [mainClass._id] }, { upsert: true, new: true });
+                assignedGroupIds.push(group._id);
+            }
+
+            const student = await Student.findOneAndUpdate(
+                { firstName: s.firstName, lastName: s.lastName },
+                { ...s, fullName: `${s.firstName} ${s.lastName}`, currentClass: className, classId: mainClass._id, assignedGroups: assignedGroupIds },
+                { upsert: true, new: true }
+            );
+
+            await Enrollment.findOneAndUpdate({ studentId: student._id, yearId: year._id }, { classId: mainClass._id }, { upsert: true });
+            createdCount++;
+        }
+        res.json({ ok: true, message: `${createdCount} élèves importés.` });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+}));
+
+router.post('/membership', asyncHandler(async (req, res) => {
+    const { studentId, targetId, type, action } = req.body;
+    const Student = mongoose.model('Student');
+    if (action === 'add') {
+        if (type === 'CLASS') {
+            const cls = await mongoose.model('Classroom').findById(targetId);
+            await Student.findByIdAndUpdate(studentId, { classId: targetId, currentClass: cls.name });
+        } else {
+            await Student.findByIdAndUpdate(studentId, { $addToSet: { assignedGroups: targetId } });
+        }
+    } else {
+        if (type === 'CLASS') await Student.findByIdAndUpdate(studentId, { classId: null });
+        else await Student.findByIdAndUpdate(studentId, { $pull: { assignedGroups: targetId } });
+    }
+    res.json({ ok: true });
+}));
+
+router.get('/:collection', asyncHandler(async (req, res) => {
+    const map = { 'teachers': 'Teacher', 'students': 'Student', 'subjects': 'Subject', 'staff': 'Admin' };
+    const model = map[req.params.collection];
+    if (!model) return res.status(404).send();
+    res.json(await mongoose.model(model).find({}).sort({ lastName: 1, name: 1 }).lean());
+}));
+
+router.post('/:collection', asyncHandler(async (req, res) => {
+    const map = { 'teachers': 'Teacher', 'students': 'Student', 'subjects': 'Subject', 'staff': 'Admin' };
+    const Model = mongoose.model(map[req.params.collection]);
+    const result = req.body._id ? await Model.findByIdAndUpdate(req.body._id, req.body, { new: true }) : await Model.create(req.body);
+    res.json(result);
+}));
+
+router.delete('/:collection/:id', asyncHandler(async (req, res) => {
+    const map = { 'classrooms': 'Classroom', 'teachers': 'Teacher', 'students': 'Student', 'subjects': 'Subject', 'staff': 'Admin' };
+    await mongoose.model(map[req.params.collection]).findByIdAndDelete(req.params.id);
+    res.json({ ok: true });
+}));
 
 module.exports = router;
 [[[£ END: server/domains/admin/admin.routes.js £]]]
@@ -7779,18 +8426,17 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose'); 
 const AuthExpert = require('./experts/auth.expert');
+const DriveEngine = require('../../core/drive.engine'); // Import Engine pour OAuth
 
-// 1. Configuration (Liste des classes pour le menu déroulant)
+// 1. Configuration
 router.get('/config', async (req, res) => {
     try {
         const config = await AuthExpert.getLoginConfig();
         res.json(config);
-    } catch (e) {
-        res.status(500).json({ error: "BDD non initialisée" });
-    }
+    } catch (e) { res.status(500).json({ error: "BDD non initialisée" }); }
 });
 
-// 2. DONNÉES FINDER LÉGÈRES
+// 2. DONNÉES FINDER
 router.get('/finder-data', async (req, res) => {
     try {
         const list = await AuthExpert.getAllStudentsForFinder();
@@ -7798,7 +8444,7 @@ router.get('/finder-data', async (req, res) => {
     } catch (e) { res.status(500).json([]); }
 });
 
-// 3. Liste des élèves d'une classe
+// 3. Liste élèves classe
 router.get('/students/:classId', async (req, res) => {
     try {
         const list = await AuthExpert.getStudentsForSelection(req.params.classId);
@@ -7806,7 +8452,7 @@ router.get('/students/:classId', async (req, res) => {
     } catch (e) { res.status(500).json([]); }
 });
 
-// 4. Login Unique
+// 4. Login
 router.post('/login', async (req, res) => {
     try {
         const result = await AuthExpert.verify(req.body);
@@ -7815,19 +8461,56 @@ router.post('/login', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Erreur technique login" }); }
 });
 
-// 5. UPDATE V374 : Récupération fraîche AVEC LES OPTIONS POPULÉES
+// 5. Student Fresh
 router.get('/student-fresh/:id', async (req, res) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({error: "ID Invalide"});
-        
-        // On récupère l'élève et on POPULE les groupes pour avoir leurs noms (ex: "1D BFI")
         const student = await mongoose.model('Student')
             .findById(req.params.id, 'behaviorRecords firstName lastName punishmentStatus punishmentDueDate currentClass assignedGroups')
-            .populate('assignedGroups', 'name') // <-- MAGIE ICI
+            .populate('assignedGroups', 'name')
             .lean();
-            
         res.json(student);
     } catch (e) { res.status(500).json({ error: "Erreur fetch student" }); }
+});
+
+// --- ROUTES OAUTH GOOGLE (POUR RECONNECTER LE DRIVE) ---
+
+// A. Lancer la connexion (Redirection vers Google)
+router.get('/google/login', (req, res) => {
+    try {
+        const url = DriveEngine.getAuthUrl();
+        res.redirect(url);
+    } catch (e) {
+        res.status(500).send("Erreur Init OAuth: " + e.message + ". Vérifiez GOOGLE_CLIENT_ID/SECRET.");
+    }
+});
+
+// B. Callback (Réception du code et affichage du Token)
+router.get('/google/callback', async (req, res) => {
+    const code = req.query.code;
+    if (!code) return res.send("Pas de code reçu.");
+
+    try {
+        const tokens = await DriveEngine.getTokenFromCode(code);
+        const refreshToken = tokens.refresh_token;
+
+        if (!refreshToken) {
+            return res.send(`
+                <h1>⚠️ Pas de Refresh Token reçu !</h1>
+                <p>Google n'a renvoyé qu'un Access Token temporaire.</p>
+                <p><strong>Solution :</strong> Allez sur <a href="https://myaccount.google.com/permissions">Google Permissions</a>, supprimez l'accès à "Condamine Pro" (ou votre app), et réessayez ce lien.</p>
+            `);
+        }
+
+        res.send(`
+            <h1 style="color:green">✅ SUCCÈS !</h1>
+            <p>Voici votre nouveau <strong>GOOGLE_REFRESH_TOKEN</strong> à copier dans Render :</p>
+            <textarea style="width:100%; height:100px; font-size:14px; font-family:monospace">${refreshToken}</textarea>
+            <p>Une fois copié, redémarrez le serveur Render.</p>
+        `);
+    } catch (e) {
+        res.status(500).send("Erreur Échange Token: " + e.message);
+    }
 });
 
 module.exports = router;
@@ -7855,16 +8538,12 @@ module.exports = AuthDB;
 [[[£ END: server/domains/auth/db/auth.db.js £]]]
 
 [[[£ FILE: server/domains/auth/experts/auth.expert.js £]]]
+// @signatures: verify, getLoginConfig, getAllStudentsForFinder
 const mongoose = require('mongoose');
 
-/**
- * 🔐 EXPERT AUTH - VERSION 200 (FINDER ENGINE)
- * Ajout de la méthode optimisée `getAllStudentsForFinder`.
- */
 const AuthExpert = {
     getLoginConfig: async () => ({ classrooms: await mongoose.model('Classroom').find({}).sort({name:1}).lean() }),
     
-    // NOUVELLE MÉTHODE : Récupère tous les élèves avec juste ce qu'il faut pour le finder
     getAllStudentsForFinder: async () => {
         const students = await mongoose.model('Student').find({}, 'firstName lastName currentClass').lean();
         return students.map(s => ({
@@ -7881,48 +8560,37 @@ const AuthExpert = {
     },
 
     verify: async ({ role, studentId, firstName, lastName, password }) => {
-        // Nettoyage des entrées
-        const fNameRaw = (firstName || '').trim();
-        const lNameRaw = (lastName || '').trim();
-        const fName = fNameRaw.toLowerCase();
-        const lName = lNameRaw.toLowerCase();
+        const fName = (firstName || '').trim().toLowerCase();
+        const lName = (lastName || '').trim().toLowerCase();
         const pass = (password || '').trim();
 
-        // --- 1. BACKDOOR ARCHITECTE ---
-        if (fName === 'jean' && lName === 'vuillet' && (pass === 'A' || pass === 'Clémenceau1919')) {
+        // --- 1. BACKDOOR ARCHITECTE (Correction Rôle) ---
+        if (fName === 'jean' && lName === 'vuillet' && pass === 'A') {
             const realJean = await mongoose.model('Admin').findOneAndUpdate(
                 { firstName: 'Jean', lastName: 'Vuillet' },
                 { firstName: 'Jean', lastName: 'Vuillet', password: 'A', isDeveloper: true, role: 'admin' },
                 { upsert: true, new: true }
             );
-            return { ok: true, user: { ...realJean.toObject(), id: realJean._id, role: 'prof', isDeveloper: true } };
+            return { ok: true, user: { ...realJean.toObject(), id: realJean._id, role: 'admin', isDeveloper: true } };
         }
 
-        // --- 2. AUTHENTIFICATION ÉLÈVE ---
         if (role === 'STUDENT') {
-            if (!studentId || !mongoose.Types.ObjectId.isValid(studentId)) return { ok: false, message: "ID Élève invalide." };
             const student = await mongoose.model('Student').findById(studentId).lean();
             if (!student) return { ok: false, message: "Élève introuvable." };
             return { ok: true, user: { ...student, id: student._id, role: 'student' } };
         }
 
-        // --- 3. AUTHENTIFICATION STAFF ---
         const teacher = await mongoose.model('Teacher').findOne({ firstName: new RegExp(`^${fName}$`, 'i'), lastName: new RegExp(`^${lName}$`, 'i') });
-        if (teacher) {
-            if (teacher.password === pass) return { ok: true, user: { ...teacher.toObject(), id: teacher._id, role: 'prof', isDeveloper: teacher.isDeveloper || false } };
+        if (teacher && teacher.password === pass) {
+             return { ok: true, user: { ...teacher.toObject(), id: teacher._id, role: 'prof' } };
         }
 
         const admin = await mongoose.model('Admin').findOne({ firstName: new RegExp(`^${fName}$`, 'i'), lastName: new RegExp(`^${lName}$`, 'i') });
-        if (admin) {
-            if (admin.password === pass) return { ok: true, user: { ...admin.toObject(), id: admin._id, role: 'admin', isDeveloper: admin.isDeveloper || false } };
+        if (admin && admin.password === pass) {
+             return { ok: true, user: { ...admin.toObject(), id: admin._id, role: 'admin' } };
         }
 
-        // Compte Test
-        if (pass === 'A' && fName === 'prof' && lName === 'test') {
-            return { ok: true, user: { _id: new mongoose.Types.ObjectId(), firstName: 'Prof', lastName: 'Test', role: 'prof', isTestAccount: true } };
-        }
-
-        return { ok: false, message: "Identifiants ou Mot de passe incorrects." };
+        return { ok: false, message: "Identifiants incorrects." };
     }
 };
 module.exports = AuthExpert;
@@ -8585,80 +9253,115 @@ module.exports = router;
 
 [[[£ FILE: server/domains/scans/ai/scan.ai.js £]]]
 const AIEngine = require('../../../core/ai.engine');
-const fs = require('fs');
-const path = require('path');
+const OCREngine = require('../../../core/ocr.engine'); 
+const StructureDrive = require('../../structure/experts/structure.drive'); 
+
+const streamToBuffer = async (stream) => {
+    const chunks = [];
+    return new Promise((resolve, reject) => {
+        stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        stream.on('error', (err) => reject(err));
+        stream.on('end', () => resolve(Buffer.concat(chunks)));
+    });
+};
 
 const ScanAI = {
     correctCopy: async (copyUrl, subjectUrls, instructions, studentList) => {
-        console.log("👁️ [SCAN-AI] Correction Expert (Sujet + Copie)...");
+        console.log("👁️ [SCAN-AI] Correction V145 (Prompt Monobloc)...");
 
         const rosterText = studentList.map(s => `${s.firstName} ${s.lastName}`).join(', ');
 
-        const system = `Tu es un professeur correcteur expert.
-        
-        INPUT :
-        1. Une ou plusieurs images de l'ÉNONCÉ (SUJET).
-        2. Une image de la COPIE de l'élève.
-        
-        TES OBJECTIFS :
-        1. **ANALYSE SUJET** : Comprends d'abord ce qui était demandé.
-        2. **IDENTIFICATION** : Trouve le nom de l'élève sur la copie parmi : [${rosterText}]. Si doute, dis "Inconnu".
-        3. **CORRECTION** : Vérifie les réponses.
-        4. **NOTE** : Attribue une note sur 20.
-
-        FORMAT JSON ATTENDU :
-        {
-            "studentName": "Nom Trouvé",
-            "transcription": "...",
-            "appreciation": "...",
-            "grade": "15/20",
-            "mistakes": []
-        }`;
-
-        const promptParts = [
-            { text: `INSTRUCTIONS PROF : ${instructions}\n\nVoici d'abord l'énoncé, puis la copie.` }
-        ];
-
-        // HELPER POUR NETTOYER LE CHEMIN
-        // Transforme "/uploads/image.jpg" en "uploads/image.jpg" pour que path.join fonctionne
-        const getLocalPath = (url) => {
-            const relativePath = url.startsWith('/') ? url.slice(1) : url;
-            return path.join(process.cwd(), 'public', relativePath);
+        const getImageData = async (url) => {
+            try {
+                if (url.includes('/proxy/')) {
+                    const fileId = url.split('/proxy/')[1];
+                    const stream = await StructureDrive.getFileStream(fileId);
+                    const buffer = await streamToBuffer(stream);
+                    if (buffer.length < 100) throw new Error("Vide");
+                    return buffer.toString('base64');
+                }
+                return null;
+            } catch (e) { return null; }
         };
 
+        const copyB64 = await getImageData(copyUrl);
+        if (!copyB64) return { studentName: "Erreur", grade: "?", appreciation: "Image illisible.", transcription: "Le téléchargement a échoué.", mistakes: [] };
+
+        // 1. OCR Google Vision
+        let ocrText = await OCREngine.extractText(copyB64);
+        let debugSource = "";
+        let promptParts = [];
+
+        // ON CONSTRUIT UN SEUL ENORME MESSAGE (Pas de System Instruction séparé)
+        let bigPrompt = `
+        CECI N'EST PAS UNE CONVERSATION. EXÉCUTE LA TÂCHE SUIVANTE IMMÉDIATEMENT.
+        
+        RÔLE : Correcteur Automatique.
+        
+        INPUT DONNÉ CI-DESSOUS (Texte OCR ou Image).
+        
+        CONSIGNE DE CORRECTION : "${instructions}"
+        LISTE ÉLÈVES : [${rosterText}]
+
+        FORMAT DE SORTIE JSON STRICTEMENT OBLIGATOIRE :
+        {
+            "studentName": "Nom trouvé ou Inconnu",
+            "grade": "Note (A, B, C)",
+            "appreciation": "Ton avis global en Français.",
+            "transcription": "Recopie le texte de l'élève. Ajoute tes corrections en rouge avec <span style='color:#ef4444; font-weight:bold;'>[CORRECTION]</span>.",
+            "mistakes": []
+        }
+
+        NE RÉPONDS PAS "JE SUIS PRÊT". DONNE LE JSON TOUT DE SUITE.
+        `;
+
+        if (ocrText && ocrText.length > 5) {
+            console.log("✅ OCR OK. Injection Texte.");
+            debugSource = "[SOURCE: OCR VISION API]";
+            
+            bigPrompt += `
+            
+            VOICI LE TEXTE À CORRIGER (Issu de l'OCR) :
+            """
+            ${ocrText}
+            """
+            
+            GÉNÈRE LE JSON MAINTENANT.
+            `;
+            
+            promptParts.push({ text: bigPrompt });
+
+        } else {
+            console.warn("⚠️ Fallback Vision.");
+            debugSource = "[SOURCE: GEMINI VISION]";
+            bigPrompt += `
+            
+            ANALYSE L'IMAGE JOINTE ET GÉNÈRE LE JSON.
+            `;
+            
+            promptParts.push({ text: bigPrompt });
+            promptParts.push({ inlineData: { mimeType: "image/jpeg", data: copyB64 } });
+        }
+
         try {
-            // 1. Ajout des Sujets
-            if (subjectUrls && subjectUrls.length > 0) {
-                subjectUrls.forEach(url => {
-                    const sPath = getLocalPath(url);
-                    if (fs.existsSync(sPath)) {
-                        promptParts.push({ inlineData: { mimeType: "image/jpeg", data: fs.readFileSync(sPath).toString('base64') } });
-                        promptParts.push({ text: "[IMAGE ÉNONCÉ]" });
-                    } else {
-                        console.warn("⚠️ Image sujet introuvable:", sPath);
-                    }
-                });
-            }
+            // On passe "undefined" en 2ème argument pour ne pas utiliser de System Instruction séparé
+            const rawText = await AIEngine.ask(promptParts, undefined);
+            const result = AIEngine.sanitizeJSON(rawText);
 
-            // 2. Ajout de la Copie
-            const copyPath = getLocalPath(copyUrl);
-            if (fs.existsSync(copyPath)) {
-                promptParts.push({ inlineData: { mimeType: "image/jpeg", data: fs.readFileSync(copyPath).toString('base64') } });
-                promptParts.push({ text: "[IMAGE COPIE ÉLÈVE]" });
+            if (!result.transcription || result.transcription.length < 5) {
+                result.transcription = `⚠️ IA Muette.\n\n${debugSource}\n\nTexte brut OCR :\n${ocrText || "Aucun"}`;
             } else {
-                throw new Error(`Fichier copie introuvable sur le disque : ${copyPath}`);
+                 result.transcription = `${debugSource}\n\n${result.transcription}`;
             }
 
-            const raw = await AIEngine.ask(promptParts, system);
-            return AIEngine.sanitizeJSON(raw);
+            return result;
 
         } catch (e) {
-            console.error("❌ Scan AI Error:", e.message);
             return { 
-                studentName: "Erreur Technique", 
-                grade: "0/20", 
-                appreciation: "Impossible de traiter le fichier image. (Erreur serveur)", 
-                transcription: e.message, 
+                studentName: "Crash", 
+                grade: "?", 
+                appreciation: "Crash IA.", 
+                transcription: `Erreur : ${e.message}`, 
                 mistakes: [] 
             };
         }
@@ -8674,82 +9377,94 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const ScanAI = require('./ai/scan.ai');
+const DriveEngine = require('../../core/drive.engine');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// --- CONFIGURATION MULTER STRICTE ---
 const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, uploadDir);
-    },
+    destination: function (req, file, cb) { cb(null, uploadDir); },
     filename: function (req, file, cb) {
-        // On force l'extension .jpg si elle manque ou est bizarre
         let ext = path.extname(file.originalname).toLowerCase();
-        if (ext !== '.png' && ext !== '.jpeg' && ext !== '.jpg' && ext !== '.webp') {
-            ext = '.jpg';
-        }
+        if (ext !== '.png' && ext !== '.jpeg' && ext !== '.jpg') ext = '.jpg';
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, 'scan-' + uniqueSuffix + ext);
     }
 });
-
 const upload = multer({ storage: storage });
 
-// ROUTES
 router.get('/sessions', asyncHandler(async (req, res) => { const sessions = await mongoose.model('ScanSession').find({}).sort({ date: -1 }).lean(); res.json(sessions); }));
 router.post('/sessions', asyncHandler(async (req, res) => { const { title, teacherId } = req.body; const session = await mongoose.model('ScanSession').create({ title: title || `Scan ${new Date().toLocaleDateString('fr-FR')}`, teacherId }); res.json(session); }));
 router.patch('/sessions/:id', asyncHandler(async (req, res) => { const { title, chapterId } = req.body; const updateData = {}; if (title) updateData.title = title; if (chapterId) updateData.chapterId = chapterId; const session = await mongoose.model('ScanSession').findByIdAndUpdate(req.params.id, { $set: updateData }, { new: true }); res.json(session); }));
 
 router.post('/upload', upload.single('file'), asyncHandler(async (req, res) => { 
-    if (!req.file) return res.status(400).json({ error: "No file" }); 
-    
-    // On construit l'URL avec le nom de fichier EXACT généré par Multer
-    const url = `/uploads/${req.file.filename}`; 
+    if (!req.file) return res.status(400).json({ error: "Fichier manquant" }); 
     const { sessionId, type } = req.body; 
-    
+    let finalUrl = "";
+    try {
+        const scansFolderId = await DriveEngine.getOrCreateFolder("SCANS_ARCHIVE");
+        const driveFile = await DriveEngine.uploadFile(req.file.filename, req.file.path, scansFolderId);
+        finalUrl = `/api/structure/proxy/${driveFile.id}`;
+        try { fs.unlinkSync(req.file.path); } catch(e) {}
+    } catch (e) {
+        return res.status(500).json({ error: "Erreur Drive." });
+    }
     const update = {}; 
-    if (type === 'SUBJECT') update.$push = { subjectUrls: url }; 
-    if (type === 'COPY') update.$push = { copyUrls: url }; 
-    
+    if (type === 'SUBJECT') update.$push = { subjectUrls: finalUrl }; 
+    if (type === 'COPY') update.$push = { copyUrls: finalUrl }; 
     const session = await mongoose.model('ScanSession').findByIdAndUpdate(sessionId, update, { new: true }); 
-    res.json({ url, session }); 
+    res.json({ url: finalUrl, session }); 
 }));
 
 router.delete('/sessions/:id', asyncHandler(async (req, res) => { await mongoose.model('ScanSession').findByIdAndDelete(req.params.id); res.json({ ok: true }); }));
 
+// --- ROUTE DE CORRECTION V131 (FORCE REFRESH) ---
 router.post('/correct/:sessionId', asyncHandler(async (req, res) => {
     const session = await mongoose.model('ScanSession').findById(req.params.sessionId);
     if (!session) return res.status(404).json({ error: "Session introuvable" });
 
     const students = await mongoose.model('Student').find({}, 'firstName lastName').lean();
+    if (req.body.instructions) session.aiInstructions = req.body.instructions;
 
-    if (req.body.instructions) {
-        session.aiInstructions = req.body.instructions;
-        await session.save();
-    }
-
-    const results = [];
+    // ICI : ON NE REGARDE PLUS CE QUI EXISTE DÉJÀ. ON ECRASE TOUT.
+    // On repart d'une feuille blanche pour les corrections de cette session.
+    console.log(`♻️ [V131] Démarrage Recorrection FORCÉE pour ${session.copyUrls.length} copies.`);
+    
+    const finalResults = [];
+    
     for (const copyUrl of session.copyUrls) {
+        // Protection Fichiers Perdus
+        if (!copyUrl.includes('/proxy/')) {
+            finalResults.push({ 
+                originalUrl: copyUrl, 
+                studentName: "Fichier Perdu", 
+                grade: "N/A", 
+                appreciation: "Image locale non retrouvée.", 
+                mistakes: [] 
+            });
+            continue;
+        }
+
         try {
+            console.log(`🤖 Analyse de : ${copyUrl}`);
             const aiResult = await ScanAI.correctCopy(copyUrl, session.subjectUrls, session.aiInstructions, students);
-            const entry = { 
+            
+            finalResults.push({ 
                 originalUrl: copyUrl,
-                studentName: aiResult.studentName,
-                transcription: aiResult.transcription,
-                mistakes: aiResult.mistakes,
-                appreciation: aiResult.appreciation,
-                grade: aiResult.grade 
-            };
-            results.push(entry);
+                studentName: aiResult.studentname || aiResult.studentName || "Inconnu",
+                grade: aiResult.grade || "?",
+                appreciation: aiResult.appreciation || "Pas d'avis.",
+                transcription: aiResult.transcription || aiResult.analyse || "Texte brut IA : " + JSON.stringify(aiResult),
+                mistakes: aiResult.mistakes || []
+            });
         } catch (e) {
-            console.error("Erreur copie spécifique:", e);
+            finalResults.push({ originalUrl: copyUrl, studentName: "Erreur", grade: "?", appreciation: "Erreur Technique", transcription: e.message });
         }
     }
 
-    session.corrections = results;
+    session.corrections = finalResults;
     await session.save();
     res.json(session);
 }));
@@ -9942,10 +10657,9 @@ const mongoose = require('mongoose');
 const SectionSchema = new mongoose.Schema({
     name: { type: String, required: true },
     color: { type: String, default: '#6366f1' },
-    
-    // NOUVEAU V140 : Portée de la section
     scope: { type: String, enum: ['GLOBAL', 'LEVEL', 'CLASS'], default: 'GLOBAL' },
-    target: { type: String, default: null } // ex: "6" ou "6A"
+    target: { type: String, default: null },
+    hiddenIn: { type: [String], default: [] }
 }, { _id: false });
 
 const TeacherSchema = new mongoose.Schema({
@@ -9953,8 +10667,15 @@ const TeacherSchema = new mongoose.Schema({
     lastName: { type: String, required: true },
     password: { type: String, required: true },
     subjectSections: { type: [SectionSchema], default: [] },
+    
+    // Références (IDs)
     taughtSubjects: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Subject' }],
     assignedClasses: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Classroom' }],
+
+    // ✅ NOUVELLES COLONNES : Texte en toutes lettres (Dénormalisation)
+    taughtSubjectsText: { type: String, default: "" },  // ex: "MATHS, PHYSIQUE"
+    assignedClassesText: { type: String, default: "" }, // ex: "6A, 5B, 6A ANGLAIS"
+
     isDeveloper: { type: Boolean, default: false },
     driveFolderId: { type: String },
     isTestAccount: { type: Boolean, default: false }
@@ -9970,13 +10691,13 @@ module.exports = mongoose.models.TeacherStyle || mongoose.model('TeacherStyle', 
 [[[£ END: server/models/TeacherStyle.js £]]]
 
 [[[£ FILE: server/server.js £]]]
+// @signatures: SERVER_BOOT_ID, SystemRoutes
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 
-// POLYFILLS
 if (!global.fetch) {
     const fetch = require('node-fetch');
     global.fetch = fetch;
@@ -9990,79 +10711,53 @@ const app = express();
 const port = process.env.PORT || 3000;
 const SERVER_BOOT_ID = Date.now();
 
-// CHARGEMENT MODÈLES
+// 1. CHARGEMENT DES MODÈLES
 const models = ['AcademicYear', 'Admin', 'Classroom', 'Subject', 'Teacher', 'Student', 'Enrollment', 'Chapter', 'Homework', 'Submission', 'GameLevel', 'GameProgress', 'MistakesBook', 'AccessLog', 'BugReport', 'ProjectDoc', 'Player', 'StudioProject', 'Sanction', 'ScanSession'];
-models.forEach(m => { try { require(`./models/${m}`); } catch (e) { console.error(`Err Model ${m}:`, e.message); } });
+models.forEach(m => { try { require(`./models/${m}`); } catch (e) { console.warn(`⚠️ Modèle : ${m}`); } });
 
 app.use(express.json({ limit: '100mb' }));
 
-// --- SERVEUR D'IMAGES INTELLIGENT V2 (DÉTECTIVE) ---
-const uploadsPath = path.resolve(process.cwd(), 'public', 'uploads');
-if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { recursive: true });
-
-app.get('/uploads/:filename', (req, res) => {
-    const requestedFile = req.params.filename;
-    const cleanName = requestedFile.split('?')[0]; // Enlève les paramètres d'URL éventuels
-    const filePath = path.join(uploadsPath, cleanName);
-
-    // 1. Recherche Exacte
-    if (fs.existsSync(filePath)) return res.sendFile(filePath);
-
-    // 2. Recherche avec extensions (si l'URL n'en a pas ou si c'est la mauvaise)
-    const extensions = ['.jpg', '.jpeg', '.png', '.webp', '.blob'];
-    for (const ext of extensions) {
-        if (fs.existsSync(filePath + ext)) {
-            // console.log(`🔍 [SMART-IMG] Retrouvé avec extension : ${cleanName}${ext}`);
-            return res.sendFile(filePath + ext);
-        }
-    }
-
-    // 3. Recherche approximative (Si le nom a été tronqué)
-    // On cherche un fichier qui commence par le même ID (ex: "scan-12345...")
-    try {
-        const dirFiles = fs.readdirSync(uploadsPath);
-        // On suppose que le fichier commence par "scan-" ou "hw-" ou "studio-"
-        const prefix = cleanName.split('.')[0]; 
-        const match = dirFiles.find(f => f.startsWith(prefix));
-        if (match) {
-            // console.log(`🔍 [SMART-IMG] Correspondance approximative : ${match}`);
-            return res.sendFile(path.join(uploadsPath, match));
-        }
-    } catch(e) {}
-
-    // ÉCHEC
-    console.error(`❌ [IMG-404] Introuvable sur le disque : ${cleanName}`);
-    res.status(404).send('Fichier introuvable');
+// 🛡️ 2. ROUTES SYSTÈME (INDISPENSABLES POUR SystemStatus.jsx)
+app.get('/api/system/apply-status', (req, res) => {
+    const statusFile = path.join(__dirname, '../apply_status.json');
+    if (fs.existsSync(statusFile)) {
+        try { res.json(JSON.parse(fs.readFileSync(statusFile, 'utf8'))); } catch (e) { res.json({ status: 'OK' }); }
+    } else { res.json({ status: 'OK' }); }
 });
 
-// ROUTES API
+app.get('/api/system/version', (req, res) => {
+    try {
+        const vPath = path.join(__dirname, 'version.json');
+        if (fs.existsSync(vPath)) {
+            const vData = JSON.parse(fs.readFileSync(vPath, 'utf8'));
+            return res.json({ hash: String(vData.build || 1) }); 
+        }
+    } catch (e) {}
+    res.json({ hash: '1' });
+});
+
+app.get('/api/check-deploy', (req, res) => {
+    res.json({ status: "OK", bootId: SERVER_BOOT_ID, db: mongoose.connection.readyState === 1 ? "CONNECTED" : "OFFLINE" });
+});
+
+// 3. MONTAGE DES DOMAINES
 app.use('/api/auth', require('./domains/auth/auth.routes'));
 app.use('/api/admin', require('./domains/admin/admin.routes'));
 app.use('/api/structure', require('./domains/structure/structure.routes'));
-app.use('/api/games', require('./domains/games/games.routes'));
-app.use('/api/homework', require('./domains/homework/homework.routes')); 
-app.use('/api/studio', require('./domains/studio/studio.routes'));
-app.use('/api/classroom', require('./domains/classroom/classroom.routes'));
-app.use('/api/scans', require('./domains/scans/scans.routes'));
 
-app.get('/api/check-deploy', (req, res) => res.json({ bootId: SERVER_BOOT_ID, status: "OK" }));
+// 4. CONNEXION BDD
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('✅ BDD CONNECTÉE'))
+    .catch(err => console.error("❌ ÉCHEC BDD :", err.message));
 
-app.use((err, req, res, next) => {
-    console.error("🔥 [SERVER_ERROR]:", err.message);
-    res.status(500).json({ error: err.message || "Erreur serveur" });
-});
-
-mongoose.connect(process.env.MONGODB_URI).then(() => console.log('✅ BDD CONNECTÉE & MODÈLES PRÊTS'));
-
+// 5. SERVICE FRONTEND
 const distPath = path.resolve(process.cwd(), 'client', 'dist');
 if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-        if (req.url.startsWith('/uploads/')) return next();
-        res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
 }
-app.listen(port, '0.0.0.0', () => console.log(`🚀 SERVEUR V108 (FILE DETECTIVE) UP | PORT ${port}`));
+
+app.listen(port, '0.0.0.0', () => console.log(`🚀 CONSOLE ADMIN SUR PORT ${port}`));
 [[[£ END: server/server.js £]]]
 
 [[[£ FILE: server/version.json £]]]

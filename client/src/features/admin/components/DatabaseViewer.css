@@ -1,0 +1,91 @@
+.db-viewer-overlay { 
+    position: fixed; inset: 0; z-index: 20000; 
+    background: rgba(15, 23, 42, 0.95); 
+    display: flex; align-items: center; justify-content: center; padding: 2rem; 
+}
+
+.db-viewer-window { 
+    background: white; width: 95%; height: 90%; 
+    border-radius: 40px; display: flex; flex-direction: column; 
+    overflow: hidden; box-shadow: 0 50px 100px -20px rgba(0,0,0,0.5);
+}
+
+.db-header { 
+    padding: 1.5rem 2.5rem; 
+    border-bottom: 1px solid #f1f5f9; 
+    display: flex; justify-content: space-between; align-items: center; 
+}
+
+/* TABLEAU PROPRE ET COMPACT */
+.db-table-clean {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    table-layout: fixed; /* Force le respect des largeurs */
+}
+
+.db-table-clean th {
+    background: #f8fafc;
+    text-align: left;
+    padding: 12px 15px;
+    border: 1px solid #f1f5f9;
+    color: #94a3b8;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    width: 180px; /* Largeur fixe pour la clarté */
+}
+
+.db-table-clean td {
+    padding: 10px 15px;
+    border: 1px solid #f1f5f9;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.db-cell-wrapper {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
+.db-table-clean tr:hover td {
+    background-color: #f0f9ff;
+    color: #3b82f6;
+}
+
+/* 🔍 INSPECTEUR DE CELLULE */
+.db-inspector-overlay {
+    position: fixed; inset: 0;
+    z-index: 30000;
+    background: rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center;
+}
+
+.db-inspector-box {
+    background: white;
+    width: 600px;
+    max-height: 500px;
+    padding: 2rem;
+    border-radius: 30px;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+}
+
+.db-inspector-content {
+    background: #0f172a;
+    color: #38bdf8;
+    padding: 1.5rem;
+    border-radius: 15px;
+    font-size: 12px;
+    overflow: auto;
+    flex: 1;
+    margin: 0;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
