@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const AdminExpert = require('./experts/admin.expert'); // ✅ Import vital pour le Dump
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -11,6 +12,17 @@ router.get('/subjects', asyncHandler(async (req, res) => res.json(await mongoose
 router.get('/students', asyncHandler(async (req, res) => res.json(await mongoose.model('Student').find({}).sort({ lastName: 1 }).lean())));
 router.get('/teachers', asyncHandler(async (req, res) => res.json(await mongoose.model('Teacher').find({}).sort({ lastName: 1 }).lean())));
 router.get('/admins', asyncHandler(async (req, res) => res.json(await mongoose.model('Admin').find({}).sort({ lastName: 1 }).lean())));
+
+// --- 📊 ROUTE DE DIAGNOSTIC (Celle qui manquait pour le bouton BDD) ---
+router.get('/database-dump', asyncHandler(async (req, res) => {
+    try {
+        const dump = await AdminExpert.getFullDump();
+        res.json(dump);
+    } catch (e) {
+        console.error("Dump Error:", e);
+        res.status(500).json({ error: "Erreur lors du dump BDD" });
+    }
+}));
 
 // --- ⚙️ ROUTE DE MAINTENANCE : PURGE MASSIVE ---
 router.post('/maintenance/purge/:collection', asyncHandler(async (req, res) => {

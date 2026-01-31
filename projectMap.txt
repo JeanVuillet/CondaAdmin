@@ -47,7 +47,6 @@
 │   ├── tailwind.config.cjs
 │   └── vite.config.js
 ├── git-auto.js
-├── history.txt
 ├── init-db.js
 ├── magic-paste.js
 ├── package.json
@@ -58,8 +57,7 @@
 │   │   ├── jetpack.png
 │   │   ├── jumper.png
 │   │   └── ~$che_Croissance_Demographique_5e.docx
-│   ├── style.css
-│   └── uploads/
+│   └── style.css
 ├── server/
 │   ├── core/
 │   │   ├── ai.engine.js
