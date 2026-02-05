@@ -74,12 +74,14 @@
 │   │   │   └── experts/
 │   │   │       ├── admin.db.js
 │   │   │       └── admin.expert.js
-│   │   └── auth/
-│   │       ├── auth.routes.js
-│   │       ├── db/
-│   │       │   └── auth.db.js
-│   │       └── experts/
-│   │           └── auth.expert.js
+│   │   ├── auth/
+│   │   │   ├── auth.routes.js
+│   │   │   ├── db/
+│   │   │   │   └── auth.db.js
+│   │   │   └── experts/
+│   │   │       └── auth.expert.js
+│   │   └── structure/
+│   │       └── structure.routes.js
 │   ├── models/
 │   │   ├── AcademicYear.js
 │   │   ├── AccessLog.js

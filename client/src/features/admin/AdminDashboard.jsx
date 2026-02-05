@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './AdminDashboard.css';
 
 export default function AdminDashboard({ user }) {
@@ -13,11 +13,17 @@ export default function AdminDashboard({ user }) {
     const [currentItem, setCurrentItem] = useState(null);
     const [manageItem, setManageItem] = useState(null); 
     
-    // États Magic Import
+    // États Magic Import & CSV
     const [importing, setImporting] = useState(false);
     const [showMagicModal, setShowMagicModal] = useState(false);
     const [magicText, setMagicText] = useState("");
+    const [magicLog, setMagicLog] = useState("");
     
+    // Refs pour upload fichier
+    const fileInputRef = useRef(null);
+    const classCsvInputRef = useRef(null); 
+    const [targetImportClass, setTargetImportClass] = useState(null); 
+
     // Données Globales
     const [allClasses, setAllClasses] = useState([]);
     const [allSubjects, setAllSubjects] = useState([]);
@@ -28,7 +34,7 @@ export default function AdminDashboard({ user }) {
         'groups': 'classrooms', 
         'teachers': 'teachers', 
         'students': 'students', 
-        'staff': 'admins',
+        'staff': 'admins', 
         'subjects': 'subjects'
     };
 
@@ -58,8 +64,7 @@ export default function AdminDashboard({ user }) {
 
     useEffect(() => { loadData(); }, [view]);
 
-    // --- HANDLERS ---
-
+    // --- HANDLERS CLASSIQUES ---
     const handleOpenCreate = () => {
         let defaults = { 
             name: '', firstName: '', lastName: '', password: '123', 
@@ -81,9 +86,7 @@ export default function AdminDashboard({ user }) {
         const targetLabel = view === 'students' && activeClassTab !== 'TOUS' 
             ? `tous les élèves de la classe ${allClasses.find(c=>c._id===activeClassTab)?.name}`
             : `toute la catégorie ${view.toUpperCase()}`;
-
         if (!confirm(`🚨 ATTENTION : Vous allez supprimer définitivement ${targetLabel}.\n\nConfirmer la purge massive ?`)) return;
-        
         setImporting(true);
         try {
             await fetch(`/api/admin/maintenance/purge/${collectionMap[view]}`, {
@@ -103,25 +106,15 @@ export default function AdminDashboard({ user }) {
     const handleSave = async () => {
         const targetCollection = collectionMap[view];
         let dataToSend = { ...currentItem };
-        
-        // Logique spéciale Profs
         if (view === 'teachers') {
             dataToSend.taughtSubjects = (dataToSend.taughtSubjects || []).map(s => s._id || s);
             dataToSend.assignedClasses = (dataToSend.assignedClasses || []).map(c => c._id || c);
-            
-            dataToSend.taughtSubjectsText = allSubjects
-                .filter(s => dataToSend.taughtSubjects.includes(s._id))
-                .map(s => s.name).join(', ');
-            
-            dataToSend.assignedClassesText = allClasses
-                .filter(c => dataToSend.assignedClasses.includes(c._id))
-                .map(c => c.name).join(', ');
+            dataToSend.taughtSubjectsText = allSubjects.filter(s => dataToSend.taughtSubjects.includes(s._id)).map(s => s.name).join(', ');
+            dataToSend.assignedClassesText = allClasses.filter(c => dataToSend.assignedClasses.includes(c._id)).map(c => c.name).join(', ');
         }
-
         if (view === 'students' && dataToSend.assignedGroups) {
              dataToSend.assignedGroups = dataToSend.assignedGroups.map(g => g._id || g);
         }
-
         await fetch(`/api/admin/${targetCollection}`, { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' }, 
@@ -130,45 +123,242 @@ export default function AdminDashboard({ user }) {
         setModalMode(null); loadData();
     };
 
-    const handleMagicImport = async () => {
+    // --- 📥 NOUVEL IMPORT CSV PAR CLASSE (CIBLÉ & SÉCURISÉ) ---
+    const triggerClassImport = (classId) => {
+        setTargetImportClass(classId);
+        if (classCsvInputRef.current) classCsvInputRef.current.click();
+    };
+
+    const handleClassFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (!file || !targetImportClass) return;
+
         setImporting(true);
-        setTimeout(() => {
-            setImporting(false);
-            setShowMagicModal(false);
-            alert("⚠️ Fonction IA en cours de maintenance. Utilisez l'ajout manuel.");
-        }, 1000);
+        setShowMagicModal(true); 
+        setMagicLog(`📂 Lecture du fichier : ${file.name}...\n`);
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const text = evt.target.result;
+                const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
+
+                if (lines.length < 1) throw new Error("Le fichier est vide.");
+
+                // Ligne 1 (Index 0) pour les En-têtes
+                const headerLineIndex = 0; 
+                const headerLine = lines[headerLineIndex];
+                
+                const separator = headerLine.includes(';') ? ';' : ',';
+                const headers = headerLine.split(separator).map(h => h.trim().toLowerCase());
+
+                setMagicLog(`📋 En-têtes détectés : ${headers.join(' | ')}\n`);
+
+                // Mapping des colonnes
+                const map = {
+                    email: headers.findIndex(h => h.includes('mail') || h.includes('courriel') || h.includes('email')),
+                    birthDate: headers.findIndex(h => h.includes('naissance') || h.includes('date')),
+                    className: headers.findIndex(h => h.includes('classe') || h.includes('division') || h.includes('groupe')) // ✅ Colonne Classe
+                };
+
+                if (map.email === -1) throw new Error("Colonne 'Email' (ou Mail/Courriel) introuvable en ligne 1.");
+
+                // Identification de la Classe Cible (Celle du bouton cliqué)
+                const classObj = allClasses.find(c => c._id === targetImportClass);
+                const targetClassName = classObj ? classObj.name.toUpperCase().trim() : "SANS CLASSE";
+
+                setMagicLog(`🎯 Import vers : ${targetClassName}`);
+
+                let successCount = 0;
+                let skippedCount = 0;
+                
+                // Boucle sur les données (Ligne 2 -> Index 1)
+                for (let i = headerLineIndex + 1; i < lines.length; i++) {
+                    const lineStr = lines[i];
+                    const cols = lineStr.split(separator).map(c => c.trim());
+
+                    // --- 🛡️ SÉCURITÉ : VÉRIFICATION DE LA CLASSE ---
+                    if (map.className !== -1) {
+                        const fileClass = cols[map.className] ? cols[map.className].toUpperCase().trim() : "";
+                        
+                        // On vérifie si la classe du fichier correspond à la cible
+                        // On ignore si le champ est vide (parfois les lignes sont incomplètes)
+                        if (fileClass && fileClass !== targetClassName) {
+                            setMagicLog(`⚠️ Ignoré (Ligne ${i+1}) : Classe fichier "${fileClass}" ≠ Cible "${targetClassName}"`);
+                            skippedCount++;
+                            continue; // ON PASSE À LA LIGNE SUIVANTE
+                        }
+                    }
+
+                    let email = map.email !== -1 ? cols[map.email] : "";
+                    let lastName = "INCONNU";
+                    let firstName = "Élève";
+
+                    // LOGIQUE NOM/PRÉNOM via EMAIL
+                    if (email && email.includes('@')) {
+                        const localPart = email.split('@')[0];
+                        const parts = localPart.split('.');
+                        
+                        if (parts.length > 0) {
+                            lastName = parts[0].toUpperCase(); 
+                            if (parts.length > 1) {
+                                firstName = parts.slice(1).join(' ');
+                                firstName = firstName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                            }
+                        }
+                    } else {
+                        if (!email) continue; 
+                    }
+
+                    // Génération Password
+                    let password = "123456";
+                    if (map.birthDate !== -1 && cols[map.birthDate]) {
+                        const rawDate = cols[map.birthDate];
+                        const digits = rawDate.replace(/\D/g, ''); 
+                        if (digits.length >= 6) password = digits;
+                    }
+
+                    setMagicLog(`➕ Ajout : ${firstName} ${lastName} (${email})`);
+
+                    await fetch('/api/admin/students', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify({
+                            firstName,
+                            lastName,
+                            email: email.toLowerCase(),
+                            password,
+                            classId: targetImportClass,
+                            currentClass: targetClassName,
+                            assignedGroups: [] 
+                        })
+                    });
+                    successCount++;
+                }
+
+                setMagicLog(`\n🎉 TERMINÉ : ${successCount} importés.`);
+                if (skippedCount > 0) setMagicLog(`⚠️ ${skippedCount} élèves ignorés car d'une autre classe.`);
+
+                e.target.value = ""; 
+                setTimeout(() => {
+                    if (confirm(`Import terminé (${successCount} ajoutés, ${skippedCount} ignorés). Recharger ?`)) {
+                        setShowMagicModal(false);
+                        setMagicLog("");
+                        loadData();
+                    }
+                }, 1000);
+
+            } catch (err) {
+                setMagicLog(`❌ ERREUR : ${err.message}`);
+                console.error(err);
+                e.target.value = ""; 
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    // --- MAGIC IMPORT (IA GÉNÉRIQUE) ---
+    const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => setMagicText(evt.target.result);
+        reader.readAsText(file);
+    };
+
+    const handleMagicImport = async () => {
+        if (!magicText.trim()) return alert("La zone de texte est vide !");
+        setImporting(true);
+        setMagicLog("🧠 L'IA analyse les données...");
+        try {
+            const contextClassName = activeClassTab !== 'TOUS' ? allClasses.find(c => c._id === activeClassTab)?.name : "SANS CLASSE";
+            const res = await fetch('/api/admin/import/magic', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ text: magicText, contextClass: contextClassName })
+            });
+            if (!res.ok) throw new Error("Erreur serveur IA");
+            const parsedList = await res.json();
+            if (!Array.isArray(parsedList) || parsedList.length === 0) throw new Error("L'IA n'a pas renvoyé de liste valide.");
+            
+            setMagicLog(`✅ ${parsedList.length} élèves identifiés. Création...`);
+            let count = 0;
+            for (const student of parsedList) {
+                const targetClass = allClasses.find(c => c.type === 'CLASS' && c.name === student.className);
+                const classId = targetClass ? targetClass._id : null;
+                const currentClass = targetClass ? targetClass.name : (student.className || "SANS CLASSE");
+                let groupIds = [];
+                if (student.options && Array.isArray(student.options)) {
+                    student.options.forEach(optName => {
+                        const grp = allClasses.find(g => g.type === 'GROUP' && g.name.includes(optName.toUpperCase()));
+                        if (grp) groupIds.push(grp._id);
+                    });
+                }
+                
+                let finalLastName = student.lastName;
+                let finalFirstName = student.firstName;
+                let finalEmail = student.email;
+                if (finalEmail && finalEmail.includes('@')) {
+                    const localPart = finalEmail.split('@')[0];
+                    const parts = localPart.split('.');
+                    if (parts.length >= 2) {
+                        finalLastName = parts[0].toUpperCase();
+                        finalFirstName = parts.slice(1).join(' ');
+                        finalFirstName = finalFirstName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                    }
+                } else {
+                    finalEmail = `${finalLastName}.${finalFirstName}@condamine.edu.ec`.toLowerCase();
+                }
+                const finalPassword = student.password && student.password.length >= 6 ? student.password : "123456";
+                
+                await fetch('/api/admin/students', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                        firstName: finalFirstName, lastName: finalLastName, email: finalEmail, password: finalPassword,
+                        classId: classId, currentClass: currentClass, assignedGroups: groupIds
+                    })
+                });
+                count++;
+                setMagicLog(`🔨 Création : ${finalFirstName} ${finalLastName} (MDP: ${finalPassword})`);
+            }
+            setMagicLog(`🎉 TERMINÉ ! ${count} élèves importés.`);
+            setTimeout(() => { setShowMagicModal(false); setMagicText(""); setMagicLog(""); loadData(); }, 2000);
+        } catch (e) {
+            setMagicLog("❌ ERREUR CRITIQUE: " + e.message);
+        }
+        setImporting(false);
     };
 
     const filteredItems = items.filter(it => {
         const searchMatch = (it.name || it.firstName || "").toLowerCase().includes(searchTerm.toLowerCase()) || (it.lastName || "").toLowerCase().includes(searchTerm.toLowerCase());
-        if (view === 'students' && activeClassTab !== 'TOUS') {
-            return searchMatch && String(it.classId) === String(activeClassTab);
-        }
+        if (view === 'students' && activeClassTab !== 'TOUS') { return searchMatch && String(it.classId) === String(activeClassTab); }
         return searchMatch;
     });
 
-    // Helper pour ajouter une entité (ID) à une liste dans currentItem
     const addItemToList = (field, id) => {
         if (!id) return;
         const currentList = (currentItem[field] || []).map(x => x._id || x);
-        if (!currentList.includes(id)) {
-            setCurrentItem({ ...currentItem, [field]: [...currentList, id] });
-        }
+        if (!currentList.includes(id)) setCurrentItem({ ...currentItem, [field]: [...currentList, id] });
     };
 
-    // Helper pour retirer une entité
     const removeItemFromList = (field, id) => {
         const currentList = (currentItem[field] || []).map(x => x._id || x);
         setCurrentItem({ ...currentItem, [field]: currentList.filter(x => x !== id) });
     };
 
-    // --- RENDER ---
-
     return (
         <div className="admin-container animate-in fade-in">
-            {importing && <div className="zoom-overlay level-2"><div className="text-white font-black text-2xl animate-pulse">⚙️ TRAITEMENT EN COURS...</div></div>}
+            {/* INPUT FILE CACHÉ POUR L'IMPORT CLASSE SPÉCIFIQUE */}
+            <input type="file" ref={classCsvInputRef} className="hidden" accept=".csv,.txt" onChange={handleClassFileSelect} />
+
+            {importing && <div className="zoom-overlay level-2">
+                <div className="text-white font-black text-2xl flex flex-col items-center gap-4">
+                    <div className="animate-spin text-5xl">⚙️</div>
+                    <div className="animate-pulse whitespace-pre-line text-center">{magicLog || "TRAITEMENT EN COURS..."}</div>
+                </div>
+            </div>}
             
-            {/* TOOLBAR */}
             <div className="admin-toolbar-pill">
                 <div className="nav-links">
                     {['classes', 'groups', 'subjects', 'teachers', 'students', 'staff'].map(v => (
@@ -182,13 +372,11 @@ export default function AdminDashboard({ user }) {
                 </div>
             </div>
 
-            {/* RECHERCHE */}
             <div className="search-container">
                 <span className="text-slate-400">🔎</span>
                 <input className="search-input" placeholder={`Filtrer dans ${view}...`} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
             
-            {/* FILTRES ÉLÈVES */}
             {view === 'students' && ( 
                 <div className="class-filter-row"> 
                     <button onClick={() => setActiveClassTab('TOUS')} className={`class-chip ${activeClassTab === 'TOUS' ? 'active' : ''}`}>TOUS</button>
@@ -198,7 +386,6 @@ export default function AdminDashboard({ user }) {
                 </div> 
             )}
 
-            {/* LISTE DES ITEMS */}
             <div className="items-list">
                 {loading ? ( <div className="p-20 text-center animate-pulse text-slate-300 font-black uppercase">Chargement...</div> ) : filteredItems.map(it => (
                     <div key={it._id} className="item-card">
@@ -215,6 +402,13 @@ export default function AdminDashboard({ user }) {
                             </span>
                         </div>
                         <div className="item-actions">
+                            {/* BOUTON IMPORT CSV CIBLÉ SUR LA CLASSE */}
+                            {view === 'classes' && (
+                                <button onClick={() => triggerClassImport(it._id)} className="btn-import-mini">
+                                    📥 IMPORT CSV
+                                </button>
+                            )}
+
                             {(view === 'classes' || view === 'groups') && <button onClick={() => setManageItem(it)} className="btn-action btn-gerer">👥 MEMBRES</button>}
                             <button onClick={() => { setCurrentItem(it); setModalMode('edit'); }} className="btn-action btn-modif">ÉDITER</button>
                             <button onClick={() => handleDelete(it._id)} className="btn-action btn-delete">✕</button>
@@ -223,224 +417,59 @@ export default function AdminDashboard({ user }) {
                 ))}
             </div>
 
-            {/* 1. MODALE MEMBRES */}
             {manageItem && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setManageItem(null)}>
-                    <div className="bg-white w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-black text-lg uppercase text-slate-700 flex items-center gap-2">
-                                <span className="text-2xl">👥</span>
-                                <span>MEMBRES : <span className="text-indigo-600">{manageItem.name}</span></span>
-                            </h3>
-                            <button onClick={() => setManageItem(null)} className="w-8 h-8 rounded-full bg-white hover:bg-red-50 text-slate-400 hover:text-red-500 font-black transition-colors">✕</button>
-                        </div>
-                        <div className="p-0 h-96 overflow-y-auto custom-scrollbar bg-white">
-                            {allStudents.filter(s => String(s.classId) === String(manageItem._id) || (s.assignedGroups && s.assignedGroups.includes(manageItem._id))).length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-4">
-                                    <span className="text-6xl grayscale opacity-20">👻</span>
-                                    <span className="font-bold text-xs uppercase tracking-widest">Aucun élève dans ce groupe</span>
-                                </div>
-                            ) : (
-                                <table className="w-full text-left border-collapse">
-                                    <thead className="bg-slate-50 sticky top-0 z-10 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                                        <tr>
-                                            <th className="p-4 border-b pl-6">Nom de l'élève</th>
-                                            <th className="p-4 border-b text-right pr-6">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {allStudents.filter(s => String(s.classId) === String(manageItem._id) || (s.assignedGroups && s.assignedGroups.includes(manageItem._id))).map(s => (
-                                            <tr key={s._id} className="hover:bg-indigo-50/50 transition-colors group cursor-pointer" onClick={() => { setManageItem(null); setCurrentItem(s); setView('students'); setModalMode('edit'); }}>
-                                                <td className="p-3 pl-6">
-                                                    <div className="font-bold text-slate-700 text-sm">{s.lastName} {s.firstName}</div>
-                                                    <div className="text-[10px] text-slate-400 font-mono">{s.email}</div>
-                                                </td>
-                                                <td className="p-3 text-right pr-6">
-                                                    <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-[9px] font-black text-slate-400 uppercase group-hover:bg-indigo-600 group-hover:text-white group-hover:border-transparent transition-all">
-                                                        Voir Fiche
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                Total : {allStudents.filter(s => String(s.classId) === String(manageItem._id) || (s.assignedGroups && s.assignedGroups.includes(manageItem._id))).length} élèves
-                            </span>
-                            <button onClick={() => setManageItem(null)} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold text-xs hover:bg-slate-700 transition-all uppercase tracking-wide">Fermer</button>
+                    <div className="bg-white w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center"><h3 className="font-black text-lg">MEMBRES</h3><button onClick={() => setManageItem(null)}>✕</button></div>
+                        <div className="p-4 h-96 overflow-y-auto">
+                             {allStudents.filter(s => String(s.classId) === String(manageItem._id) || (s.assignedGroups && s.assignedGroups.includes(manageItem._id))).map(s => (
+                                <div key={s._id} className="p-2 border-b">{s.firstName} {s.lastName}</div>
+                             ))}
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* 2. MODALE CREATE/EDIT */}
             {modalMode && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setModalMode(null)}>
                     <div className="bg-white w-full max-w-lg rounded-3xl p-8 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-black uppercase mb-6 text-slate-800">{modalMode === 'create' ? 'Ajouter' : 'Modifier'} {view.slice(0,-1)}</h3>
-                        
+                        <h3 className="text-xl font-black uppercase mb-6">{modalMode}</h3>
                         <div className="space-y-4 mb-8">
-                            {/* Identité (Tous) */}
-                            {(view === 'students' || view === 'teachers' || view === 'staff') && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm" placeholder="Prénom" value={currentItem.firstName||''} onChange={e=>setCurrentItem({...currentItem, firstName:e.target.value})} />
-                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm" placeholder="Nom" value={currentItem.lastName||''} onChange={e=>setCurrentItem({...currentItem, lastName:e.target.value})} />
-                                </div>
-                            )}
-                            
-                            {(view === 'classes' || view === 'groups' || view === 'subjects') && (
-                                <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm" placeholder="Nom (ex: 6A, MATHS)" value={currentItem.name||''} onChange={e=>setCurrentItem({...currentItem, name:e.target.value})} />
-                            )}
-
-                            {/* --- SPÉCIFIQUE : PROFESSEURS --- */}
-                            {view === 'teachers' && (
-                                <div className="space-y-4">
-                                    {/* MATIÈRES (CHIPS) */}
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 mb-2 block">Matières</label>
-                                        <div className="flex flex-wrap gap-2 mb-2">
-                                            {(currentItem.taughtSubjects || []).map(id => {
-                                                const sub = allSubjects.find(s => s._id === (id._id || id));
-                                                if (!sub) return null;
-                                                return (
-                                                    <span key={sub._id} className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-bold border border-indigo-100 flex items-center gap-2">
-                                                        {sub.name}
-                                                        <button onClick={() => removeItemFromList('taughtSubjects', sub._id)} className="w-4 h-4 rounded-full bg-white hover:bg-red-500 hover:text-white flex items-center justify-center text-slate-400 transition-colors">×</button>
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                        <select 
-                                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase text-slate-500"
-                                            onChange={(e) => { addItemToList('taughtSubjects', e.target.value); e.target.value=""; }}
-                                        >
-                                            <option value="">+ Ajouter une matière</option>
-                                            {allSubjects.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
-                                        </select>
-                                    </div>
-
-                                    {/* CLASSES (CHIPS) */}
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 mb-2 block">Classes</label>
-                                        <div className="flex flex-wrap gap-2 mb-2">
-                                            {(currentItem.assignedClasses || []).map(id => {
-                                                const cls = allClasses.find(c => c._id === (id._id || id) && c.type === 'CLASS');
-                                                if (!cls) return null;
-                                                return (
-                                                    <span key={cls._id} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold border border-emerald-100 flex items-center gap-2">
-                                                        {cls.name}
-                                                        <button onClick={() => removeItemFromList('assignedClasses', cls._id)} className="w-4 h-4 rounded-full bg-white hover:bg-red-500 hover:text-white flex items-center justify-center text-slate-400 transition-colors">×</button>
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                        <select 
-                                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase text-slate-500"
-                                            onChange={(e) => { addItemToList('assignedClasses', e.target.value); e.target.value=""; }}
-                                        >
-                                            <option value="">+ Ajouter une classe</option>
-                                            {allClasses.filter(c => c.type === 'CLASS').map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-                                        </select>
-                                    </div>
-
-                                    {/* GROUPES (CHIPS) */}
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 mb-2 block">Groupes</label>
-                                        <div className="flex flex-wrap gap-2 mb-2">
-                                            {(currentItem.assignedClasses || []).map(id => {
-                                                const grp = allClasses.find(c => c._id === (id._id || id) && c.type === 'GROUP');
-                                                if (!grp) return null;
-                                                return (
-                                                    <span key={grp._id} className="px-3 py-1 bg-purple-50 text-purple-700 rounded-lg text-[10px] font-bold border border-purple-100 flex items-center gap-2">
-                                                        {grp.name}
-                                                        <button onClick={() => removeItemFromList('assignedClasses', grp._id)} className="w-4 h-4 rounded-full bg-white hover:bg-red-500 hover:text-white flex items-center justify-center text-slate-400 transition-colors">×</button>
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                        <select 
-                                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase text-slate-500"
-                                            onChange={(e) => { addItemToList('assignedClasses', e.target.value); e.target.value=""; }}
-                                        >
-                                            <option value="">+ Ajouter un groupe</option>
-                                            {allClasses.filter(c => c.type === 'GROUP').map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* --- SPÉCIFIQUE : ÉLÈVES --- */}
-                            {view === 'students' && (
-                                <>
-                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm" placeholder="Email" value={currentItem.email||''} onChange={e=>setCurrentItem({...currentItem, email:e.target.value})} />
-                                    
-                                    <div className="grid grid-cols-1 gap-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1">Classe Principale</label>
-                                        <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-600" value={currentItem.classId||''} onChange={e=>setCurrentItem({...currentItem, classId:e.target.value})}>
-                                            <option value="">-- Sans Classe --</option>
-                                            {allClasses.filter(c=>c.type==='CLASS').map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-                                        </select>
-                                    </div>
-
-                                    {/* ✅ GROUPES (CHIPS ÉLÈVES) - NOUVELLE VERSION */}
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 mb-2 block">Groupes & Options</label>
-                                        <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-50 rounded-xl min-h-[40px] items-center">
-                                            {(currentItem.assignedGroups || []).length === 0 && <span className="text-xs text-slate-300 italic px-2">Aucun groupe</span>}
-                                            {(currentItem.assignedGroups || []).map(id => {
-                                                const group = allClasses.find(c => c._id === (id._id || id));
-                                                if (!group) return null;
-                                                return (
-                                                    <span key={group._id} className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-bold border border-indigo-100 flex items-center gap-2">
-                                                        {group.name}
-                                                        <button 
-                                                            onClick={() => removeItemFromList('assignedGroups', group._id)} 
-                                                            className="w-4 h-4 rounded-full bg-white hover:bg-red-500 hover:text-white flex items-center justify-center text-slate-400 transition-colors"
-                                                        >
-                                                            ×
-                                                        </button>
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                        <select 
-                                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px] font-bold uppercase text-slate-500 hover:border-indigo-300 transition-all"
-                                            onChange={(e) => { addItemToList('assignedGroups', e.target.value); e.target.value=""; }}
-                                        >
-                                            <option value="">+ Ajouter un groupe</option>
-                                            {allClasses.filter(c => c.type === 'GROUP').map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
-                                        </select>
-                                    </div>
-                                </>
-                            )}
+                             <input className="w-full p-3 border rounded" placeholder="Nom" value={currentItem.name || currentItem.lastName || ''} onChange={e => setCurrentItem({...currentItem, name:e.target.value, lastName:e.target.value})} />
+                             {(view === 'students' || view === 'teachers') && <input className="w-full p-3 border rounded" placeholder="Prénom" value={currentItem.firstName||''} onChange={e=>setCurrentItem({...currentItem, firstName:e.target.value})} />}
                         </div>
-
                         <div className="flex justify-end gap-3">
-                            <button onClick={() => setModalMode(null)} className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase text-slate-500 hover:bg-slate-100 transition-colors">Annuler</button>
-                            <button onClick={handleSave} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-200">Enregistrer</button>
+                            <button onClick={() => setModalMode(null)} className="btn-action">Annuler</button>
+                            <button onClick={handleSave} className="btn-action bg-indigo-600 text-white">Sauvegarder</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* 3. MODALE MAGIC IMPORT */}
             {showMagicModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setShowMagicModal(false)}>
                     <div className="bg-white w-full max-w-3xl rounded-3xl p-8 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
                         <h3 className="text-xl font-black uppercase mb-2 text-indigo-600">🔮 Magic Import IA</h3>
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-6">Collez un tableau Excel ou une liste brute, l'IA s'occupe du reste.</p>
-                        <textarea 
-                            className="w-full h-64 bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 font-mono text-xs focus:border-indigo-500 outline-none resize-none mb-6"
-                            placeholder="Exemple :&#10;Dupont Jean 6A Option Anglais&#10;Durand Marie 6B"
-                            value={magicText}
-                            onChange={e => setMagicText(e.target.value)}
-                        />
-                        <div className="flex justify-end gap-3">
+                        <div className="flex justify-between items-center mb-4">
+                            <p className="text-xs font-bold text-slate-400 uppercase">Collez du texte ou chargez un fichier CSV/Excel.</p>
+                            <input type="file" ref={fileInputRef} className="hidden" accept=".csv,.txt" onChange={handleFileUpload} />
+                            <button onClick={() => fileInputRef.current.click()} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-black uppercase hover:bg-slate-200 transition-colors flex items-center gap-2">📂 Charger un fichier CSV</button>
+                        </div>
+                        {magicLog ? (
+                            <div className="w-full h-64 bg-slate-900 text-emerald-400 font-mono text-xs p-4 rounded-2xl overflow-y-auto border-2 border-slate-800">
+                                {magicLog.split('\n').map((l, i) => <div key={i}>{l}</div>)}
+                            </div>
+                        ) : (
+                            <textarea 
+                                className="w-full h-64 bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 font-mono text-xs focus:border-indigo-500 outline-none resize-none mb-6"
+                                placeholder="Exemple :&#10;vuillet.jean@condamine.edu.ec 3A 12/05/2010&#10;dupont.marie@condamine.edu.ec 3B"
+                                value={magicText}
+                                onChange={e => setMagicText(e.target.value)}
+                            />
+                        )}
+                        <div className="flex justify-end gap-3 mt-4">
                             <button onClick={() => setShowMagicModal(false)} className="px-5 py-3 rounded-xl font-bold text-xs uppercase text-slate-500 hover:bg-slate-100">Fermer</button>
-                            <button onClick={handleMagicImport} className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-black text-xs uppercase hover:shadow-lg hover:scale-105 transition-all">Lancer l'analyse</button>
+                            {!magicLog && <button onClick={handleMagicImport} className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-black text-xs uppercase hover:shadow-lg hover:scale-105 transition-all">Lancer l'analyse</button>}
                         </div>
                     </div>
                 </div>

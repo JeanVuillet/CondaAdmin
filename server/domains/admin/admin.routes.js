@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const AdminExpert = require('./experts/admin.expert'); // ✅ Import vital pour le Dump
+const AdminExpert = require('./experts/admin.expert'); 
+const AdminAI = require('./ai/admin.ai'); // Import de l'IA
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -13,7 +14,23 @@ router.get('/students', asyncHandler(async (req, res) => res.json(await mongoose
 router.get('/teachers', asyncHandler(async (req, res) => res.json(await mongoose.model('Teacher').find({}).sort({ lastName: 1 }).lean())));
 router.get('/admins', asyncHandler(async (req, res) => res.json(await mongoose.model('Admin').find({}).sort({ lastName: 1 }).lean())));
 
-// --- 📊 ROUTE DE DIAGNOSTIC (Celle qui manquait pour le bouton BDD) ---
+// --- 🧠 ROUTE INTELLIGENCE ARTIFICIELLE ---
+// Permet de parser une liste d'élèves brute via Gemini
+router.post('/import/magic', asyncHandler(async (req, res) => {
+    const { text, contextClass } = req.body;
+    if (!text) return res.status(400).json({ error: "Aucun texte fourni" });
+
+    try {
+        console.log(`🧠 [API] Demande Magic Import pour la classe contexte: ${contextClass}`);
+        const result = await AdminAI.parseRawStudentData(text, contextClass || "SANS CLASSE");
+        res.json(result);
+    } catch (e) {
+        console.error("Erreur Magic Import:", e);
+        res.status(500).json({ error: "Erreur IA: " + e.message });
+    }
+}));
+
+// --- 📊 ROUTE DE DIAGNOSTIC ---
 router.get('/database-dump', asyncHandler(async (req, res) => {
     try {
         const dump = await AdminExpert.getFullDump();
@@ -49,7 +66,7 @@ router.post('/maintenance/purge/:collection', asyncHandler(async (req, res) => {
     }
 
     // Filtre : Si on purge les étudiants d'une classe précise
-    if (collection === 'students' && filterClassId) {
+    if (collection === 'students' && filterClassId && filterClassId !== 'TOUS') {
         query = { classId: filterClassId };
     }
 

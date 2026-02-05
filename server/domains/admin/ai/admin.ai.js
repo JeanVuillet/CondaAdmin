@@ -2,46 +2,88 @@ const AIEngine = require('../../../core/ai.engine');
 
 const AdminAI = {
     parseRawStudentData: async (rawText, contextClass) => {
-        console.log("🧠 [AI] Analyse Magic Import V166 (Mode Tableau)...");
+        console.log("🧠 [AI] Analyse Magic Import V300 (Stratégie Séparateur ||||)...");
         
-        const system = `Tu es un expert en extraction de données scolaires (Data Mining).
-        Ta mission : Convertir un texte en vrac (ou un tableau copié-collé) en JSON strict.
+        // On sécurise la taille de l'entrée
+        const cleanedText = rawText ? rawText.substring(0, 30000) : "";
 
-        RÈGLES D'EXTRACTION :
-        1. STRUCTURE : Si tu vois des barres '|', c'est un tableau. Utilise les en-têtes pour identifier les colonnes.
-        2. IDENTITÉ : Cherche 'Nom', 'Prénom', 'Élève'. Sépare Nom et Prénom.
-        3. CLASSE : Cherche une colonne 'Classe'. Si elle existe (ex: 2C, 2D), utilise-la pour chaque élève ! Sinon, utilise le contexte "${contextClass}".
-        4. OPTIONS : Cherche la colonne 'Options'. Si elle contient plusieurs matières, sépare-les.
-           - Mots clés options : SPE, LVA, LVB, DNL, BFI, SC. LABO, CAV, PORTUGAIS, ESPAGNOL, ANGLAIS.
-        5. EMAIL : Cherche la colonne 'E-mail'. C'est la clé unique.
-
-        EXEMPLE D'ENTRÉE :
-        | Élève | Classe | Options |
-        | Dupont Jean | 2C | CAV, LVA ANGLAIS |
-
-        SORTIE ATTENDUE :
-        [
-          {
-            "firstName": "Jean",
-            "lastName": "DUPONT",
-            "email": "...", // Si trouvé
-            "className": "2C",
-            "options": ["CAV", "LVA ANGLAIS"]
-          }
-        ]
+        const system = `Tu es un extracteur de données robuste.
         
-        RÉPOND UNIQUEMENT LE JSON.`;
+        MISSION :
+        Convertis le texte (CSV, Excel, Liste) en objets JSON individuels.
+        
+        RÈGLES STRICTES :
+        1. SÉPARATEUR : Sépare chaque objet JSON par exactement cette chaîne : "||||"
+        2. FORMAT : Ne renvoie PAS un tableau [ ]. Renvoie juste : {objet}||||{objet}||||{objet}
+        3. CONTENU : Chaque objet doit avoir : "firstName", "lastName", "email", "className", "options" (Array de strings), "password".
+        
+        RÈGLES MÉTIER :
+        - Email : Si absent, ne rien mettre (le serveur le générera).
+        - Nom/Prénom via Email : Si l'email est "dupont.jean@...", alors lastName="DUPONT", firstName="Jean".
+        - Password : Si date de naissance (JJ/MM/AAAA) trouvée -> "JJMMAAAA". Sinon "123456".
+        - ClassName : Si introuvable dans la ligne, utiliser "${contextClass}".
+        
+        EXEMPLE DE SORTIE :
+        {"lastName":"DUPONT", "firstName":"Jean", "password":"12052010", "className":"6A", "options":[]}||||{"lastName":"DURAND", ...}
+        
+        RIEN D'AUTRE. PAS DE MARKDOWN. PAS DE TEXTE D'INTRO.`;
 
-        const prompt = `ANALYSE CE TEXTE :\n\n${rawText.substring(0, 20000)}`;
+        const prompt = `TEXTE BRUT À TRAITER :\n\n${cleanedText}`;
 
         try {
-            const response = await AIEngine.ask(prompt, system);
-            const result = AIEngine.sanitizeJSON(response);
-            console.log(`🧠 [AI] ${result.length} élèves extraits.`);
-            return result;
+            let rawResponse = await AIEngine.ask(prompt, system);
+            
+            // 1. Nettoyage préliminaire
+            let clean = rawResponse
+                .replace(/```json/g, "")
+                .replace(/```/g, "")
+                .trim();
+
+            // 2. Découpage par le séparateur magique
+            const parts = clean.split('||||');
+            
+            const validStudents = [];
+            let failures = 0;
+
+            for (const part of parts) {
+                if (!part.trim()) continue; // Ignore les vides
+                
+                try {
+                    // On nettoie les éventuels sauts de ligne parasites
+                    const jsonStr = part.trim();
+                    const student = JSON.parse(jsonStr);
+
+                    // Validation minimale
+                    if (student.lastName || student.firstName) {
+                        // Patch de sécurité : s'assurer que options est un tableau
+                        if (!Array.isArray(student.options)) student.options = [];
+                        
+                        validStudents.push(student);
+                    }
+                } catch (e) {
+                    failures++;
+                    console.warn("⚠️ [AI] Echec parsing partiel sur un élément :", part.substring(0, 50) + "...");
+                }
+            }
+
+            console.log(`🧠 [AI] Succès : ${validStudents.length} élèves extraits (${failures} échecs ignorés).`);
+            
+            // Si l'IA a quand même renvoyé un tableau JSON standard malgré la consigne (ça arrive), on tente le coup
+            if (validStudents.length === 0 && (clean.startsWith('[') || clean.indexOf('[') < 10)) {
+                try {
+                    const start = clean.indexOf('[');
+                    const end = clean.lastIndexOf(']');
+                    if (start !== -1 && end !== -1) {
+                        const directJson = JSON.parse(clean.substring(start, end + 1));
+                        if (Array.isArray(directJson)) return directJson;
+                    }
+                } catch(e) {}
+            }
+
+            return validStudents;
+
         } catch (e) {
-            console.error("❌ AI Parsing Failed:", e.message);
-            // On renvoie un tableau vide pour ne pas crasher le serveur
+            console.error("❌ AI Parsing Global Crash:", e.message);
             return [];
         }
     }
