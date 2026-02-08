@@ -6,7 +6,9 @@ const LayoutSchema = new mongoose.Schema({
 }, { _id: false });
 
 const ClassroomSchema = new mongoose.Schema({
-    name: { type: String, required: true, uppercase: true },
+    // 🛡️ CONTRAINTE UNIQUE : Impossible d'avoir deux classes/groupes avec le même nom
+    name: { type: String, required: true, uppercase: true, unique: true },
+    
     level: { type: String }, 
     
     type: { type: String, enum: ['CLASS', 'GROUP'], default: 'CLASS' },

@@ -74,12 +74,24 @@ router.post('/maintenance/purge/:collection', asyncHandler(async (req, res) => {
     res.json({ ok: true, deletedCount: result.deletedCount });
 }));
 
-// --- CRUD STANDARD ---
+// --- CRUD STANDARD AVEC GESTION DOUBLONS ---
 router.post('/:collection', asyncHandler(async (req, res) => {
     const modelMap = { 'classrooms': 'Classroom', 'teachers': 'Teacher', 'students': 'Student', 'subjects': 'Subject', 'admins': 'Admin' };
     const Model = mongoose.model(modelMap[req.params.collection]);
-    const result = req.body._id ? await Model.findByIdAndUpdate(req.body._id, req.body, { new: true }) : await Model.create(req.body);
-    res.json(result);
+    
+    try {
+        const result = req.body._id 
+            ? await Model.findByIdAndUpdate(req.body._id, req.body, { new: true }) 
+            : await Model.create(req.body);
+        res.json(result);
+    } catch (e) {
+        // Gestion propre de l'erreur "Duplicate Key" (Code 11000)
+        if (e.code === 11000) {
+            console.warn(`⚠️ Doublon détecté sur ${req.params.collection}`);
+            return res.status(400).json({ error: "Doublon détecté", code: 11000 });
+        }
+        throw e;
+    }
 }));
 
 router.delete('/:collection/:id', asyncHandler(async (req, res) => {

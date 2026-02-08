@@ -2,84 +2,67 @@ const AIEngine = require('../../../core/ai.engine');
 
 const AdminAI = {
     parseRawStudentData: async (rawText, contextClass) => {
-        console.log("🧠 [AI] Analyse Magic Import V300 (Stratégie Séparateur ||||)...");
+        console.log("🧠 [AI] Analyse Magic Import V303 (FullName Support)...");
         
         // On sécurise la taille de l'entrée
         const cleanedText = rawText ? rawText.substring(0, 30000) : "";
 
-        const system = `Tu es un extracteur de données robuste.
+        const system = `Tu es un expert en gestion de base de données scolaires.
         
         MISSION :
-        Convertis le texte (CSV, Excel, Liste) en objets JSON individuels.
+        Convertis le texte (CSV, Excel, Liste) en objets JSON.
         
-        RÈGLES STRICTES :
-        1. SÉPARATEUR : Sépare chaque objet JSON par exactement cette chaîne : "||||"
-        2. FORMAT : Ne renvoie PAS un tableau [ ]. Renvoie juste : {objet}||||{objet}||||{objet}
-        3. CONTENU : Chaque objet doit avoir : "firstName", "lastName", "email", "className", "options" (Array de strings), "password".
+        RÈGLES D'OR SUR L'IDENTITÉ :
+        1. Si un EMAIL est présent, déduis Nom/Prénom de l'email.
+        2. Si une colonne "Nom Complet" ou "Fullname" est détectée, utilise-la pour remplir "fullName", "firstName" et "lastName".
         
-        RÈGLES MÉTIER :
-        - Email : Si absent, ne rien mettre (le serveur le générera).
-        - Nom/Prénom via Email : Si l'email est "dupont.jean@...", alors lastName="DUPONT", firstName="Jean".
-        - Password : Si date de naissance (JJ/MM/AAAA) trouvée -> "JJMMAAAA". Sinon "123456".
-        - ClassName : Si introuvable dans la ligne, utiliser "${contextClass}".
+        RÈGLES DE SORTIE :
+        1. SÉPARATEUR : Sépare chaque objet JSON par "||||"
+        2. FORMAT : {objet}||||{objet}
+        3. CHAMPS : "firstName", "lastName", "fullName", "email", "className", "options" (Array de strings), "password".
         
-        EXEMPLE DE SORTIE :
-        {"lastName":"DUPONT", "firstName":"Jean", "password":"12052010", "className":"6A", "options":[]}||||{"lastName":"DURAND", ...}
-        
-        RIEN D'AUTRE. PAS DE MARKDOWN. PAS DE TEXTE D'INTRO.`;
+        INTELLIGENCE :
+        - "className" est la classe principale. Si introuvable, utilise "${contextClass}".
+        - "options" : Tout ce qui ressemble à un groupe, une langue ou une option.
+        `;
 
         const prompt = `TEXTE BRUT À TRAITER :\n\n${cleanedText}`;
 
         try {
             let rawResponse = await AIEngine.ask(prompt, system);
             
-            // 1. Nettoyage préliminaire
+            // 1. Nettoyage
             let clean = rawResponse
                 .replace(/```json/g, "")
                 .replace(/```/g, "")
                 .trim();
 
-            // 2. Découpage par le séparateur magique
+            // 2. Découpage
             const parts = clean.split('||||');
             
             const validStudents = [];
-            let failures = 0;
-
+            
             for (const part of parts) {
-                if (!part.trim()) continue; // Ignore les vides
-                
+                if (!part.trim()) continue;
                 try {
-                    // On nettoie les éventuels sauts de ligne parasites
-                    const jsonStr = part.trim();
-                    const student = JSON.parse(jsonStr);
+                    const student = JSON.parse(part.trim());
+                    // Sécurité : Si fullName présent mais pas les autres, on découpe
+                    if (student.fullName && (!student.lastName || student.lastName === "INCONNU")) {
+                         const names = student.fullName.trim().split(/\s+/);
+                         if (names.length > 1) {
+                             student.firstName = names.pop();
+                             student.lastName = names.join(' ').toUpperCase();
+                         }
+                    }
 
-                    // Validation minimale
                     if (student.lastName || student.firstName) {
-                        // Patch de sécurité : s'assurer que options est un tableau
                         if (!Array.isArray(student.options)) student.options = [];
-                        
                         validStudents.push(student);
                     }
-                } catch (e) {
-                    failures++;
-                    console.warn("⚠️ [AI] Echec parsing partiel sur un élément :", part.substring(0, 50) + "...");
-                }
+                } catch (e) {}
             }
 
-            console.log(`🧠 [AI] Succès : ${validStudents.length} élèves extraits (${failures} échecs ignorés).`);
-            
-            // Si l'IA a quand même renvoyé un tableau JSON standard malgré la consigne (ça arrive), on tente le coup
-            if (validStudents.length === 0 && (clean.startsWith('[') || clean.indexOf('[') < 10)) {
-                try {
-                    const start = clean.indexOf('[');
-                    const end = clean.lastIndexOf(']');
-                    if (start !== -1 && end !== -1) {
-                        const directJson = JSON.parse(clean.substring(start, end + 1));
-                        if (Array.isArray(directJson)) return directJson;
-                    }
-                } catch(e) {}
-            }
-
+            console.log(`🧠 [AI] Succès : ${validStudents.length} élèves extraits.`);
             return validStudents;
 
         } catch (e) {

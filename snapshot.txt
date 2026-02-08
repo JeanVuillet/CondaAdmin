@@ -126,54 +126,86 @@ const inputFile = 'update.txt';
 const statusFile = 'apply_status.json';
 
 console.log("------------------------------------------------");
-console.log("🤖 [CONSTITUTION] apply.js v32 actif.");
-console.log("🚀 Correction Boucle Sync - Build #369");
+console.log("🤖 [CONSTITUTION] apply.js v33 (STABLE) actif.");
+console.log("🚀 Protection Write-Crash activée.");
 console.log("------------------------------------------------");
 
 function setStatus(status, file = null) {
-    try { fs.writeFileSync(statusFile, JSON.stringify({ status, file, timestamp: Date.now() }, null, 2)); } catch (e) {}
+    try { 
+        fs.writeFileSync(statusFile, JSON.stringify({ status, file, timestamp: Date.now() }, null, 2)); 
+    } catch (e) {
+        console.error("⚠️ Erreur écriture status:", e.message);
+    }
 }
 
 function applyUpdate() {
     if (!fs.existsSync(inputFile)) return;
+    
     let rawContent = "";
-    try { rawContent = fs.readFileSync(inputFile, 'utf8'); } catch (e) { return; }
+    try { 
+        rawContent = fs.readFileSync(inputFile, 'utf8'); 
+    } catch (e) { 
+        console.error("⚠️ Lecture impossible update.txt (occupé?)");
+        return; 
+    }
+
     if (rawContent.trim().length < 10) return;
 
     let processed = false;
     const startRegex = /\[\[\[£\s*FILE\s*:\s*([^£\]\s]+)\s*£\]\]\]/g;
     let startMatch;
 
-    while ((startMatch = startRegex.exec(rawContent)) !== null) {
-        const filePath = startMatch[1].trim();
-        const contentStartIndex = startMatch.index + startMatch[0].length;
-        const endTag = `[[[£ END: ${filePath} £]]]`;
-        const endIdx = rawContent.indexOf(endTag);
+    // Protection contre les boucles infinies de lecture
+    let filesProcessed = 0;
 
-        if (endIdx !== -1) {
-            const fileContent = rawContent.substring(contentStartIndex, endIdx).trim();
-            const fullPath = path.join(__dirname, filePath);
-            if (!fs.existsSync(path.dirname(fullPath))) fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-            fs.writeFileSync(fullPath, fileContent);
-            console.log(`   ✅ ALIGNÉ : ${filePath}`);
-            processed = true;
+    while ((startMatch = startRegex.exec(rawContent)) !== null) {
+        try {
+            const filePath = startMatch[1].trim();
+            const contentStartIndex = startMatch.index + startMatch[0].length;
+            const endTag = `[[[£ END: ${filePath} £]]]`;
+            const endIdx = rawContent.indexOf(endTag);
+
+            if (endIdx !== -1) {
+                const fileContent = rawContent.substring(contentStartIndex, endIdx).trim();
+                const fullPath = path.join(__dirname, filePath);
+                
+                // Création récursive des dossiers
+                if (!fs.existsSync(path.dirname(fullPath))) {
+                    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+                }
+
+                fs.writeFileSync(fullPath, fileContent);
+                console.log(`   ✅ ÉCRIT : ${filePath}`);
+                processed = true;
+                filesProcessed++;
+            }
+        } catch (err) {
+            console.error(`   ❌ ERREUR CRITIQUE SUR FICHIER : ${err.message}`);
         }
     }
+
     if (processed) {
-        fs.writeFileSync(inputFile, '');
-        setStatus('OK');
-        console.log("✨ SYNC TERMINÉE.");
+        try {
+            fs.writeFileSync(inputFile, ''); // Vidage atomique
+            setStatus('OK');
+            console.log(`✨ SYNC TERMINÉE (${filesProcessed} fichiers).`);
+        } catch (e) {
+            console.error("❌ Impossible de vider update.txt");
+        }
     }
 }
+
+// Initialisation propre
 setStatus('OK');
-setInterval(applyUpdate, 1000);
+// Intervalle augmenté légèrement pour stabilité FS
+setInterval(applyUpdate, 1500);
 [[[£ END: apply.js £]]]
 
 [[[£ FILE: apply_status.json £]]]
 {
   "status": "OK",
   "file": null,
-  "timestamp": 1770211690814
+  "timestamp": 1770490341024
 }
 [[[£ END: apply_status.json £]]]
 
@@ -480,15 +512,37 @@ export default function SystemStatus({ isAppReady }) {
 [[[£ END: client/src/components/SystemStatus/SystemStatus.jsx £]]]
 
 [[[£ FILE: client/src/features/admin/AdminDashboard.css £]]]
-/* --- LAYOUT GLOBAL --- */
+/* --- AJOUTS V2 : Boutons d'import sur carte --- */
+
+.btn-import-mini {
+    background: #e0e7ff; 
+    color: #4338ca;
+    border: 1px solid #c7d2fe;
+    padding: 10px 16px;
+    border-radius: 12px;
+    font-size: 0.65rem;
+    font-weight: 900;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-import-mini:hover {
+    background: #4338ca;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(67, 56, 202, 0.2);
+}
+
 .admin-container {
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
     font-family: 'Inter', sans-serif;
 }
-
-/* --- LE BANDEAU NOIR (RESTO) --- */
 .admin-toolbar-pill {
     background: #0f172a;
     border-radius: 50px;
@@ -500,202 +554,106 @@ export default function SystemStatus({ isAppReady }) {
     box-shadow: 0 20px 40px rgba(0,0,0,0.15);
     gap: 20px;
 }
-
-.nav-links {
-    display: flex;
-    gap: 25px;
-}
-
+.nav-links { display: flex; gap: 25px; }
 .nav-link {
-    color: #64748b;
-    font-weight: 900;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    transition: all 0.2s;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 5px 0;
+    color: #64748b; font-weight: 900; font-size: 0.75rem; text-transform: uppercase;
+    letter-spacing: 1px; transition: all 0.2s; background: none; border: none; cursor: pointer; padding: 5px 0;
 }
-
 .nav-link:hover { color: #f8fafc; }
 .nav-link.active { color: #818cf8; border-bottom: 2px solid #818cf8; }
-
-.action-buttons {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-
-/* BOUTONS ACTIONS */
+.action-buttons { display: flex; gap: 12px; align-items: center; }
 .btn-pill {
-    height: 36px;
-    padding: 0 18px;
-    border-radius: 12px;
-    font-weight: 900;
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    height: 36px; padding: 0 18px; border-radius: 12px; font-weight: 900;
+    font-size: 0.65rem; text-transform: uppercase; border: none; cursor: pointer;
+    transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
 }
-
 .btn-clean { background: #dc2626; color: white; }
 .btn-import { background: #8b5cf6; color: white; }
 .btn-add { background: #334155; color: white; }
 .btn-pill:hover { transform: translateY(-2px); filter: brightness(1.1); }
-
-/* BARRE DE RECHERCHE */
 .search-container {
-    background: white;
-    border-radius: 20px;
-    padding: 15px 25px;
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 25px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    background: white; border-radius: 20px; padding: 15px 25px; display: flex; align-items: center;
+    gap: 15px; margin-bottom: 25px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
 }
-
-.search-input {
-    flex: 1;
-    border: none;
-    outline: none;
-    font-weight: 700;
-    font-size: 1rem;
-    color: #1e293b;
-}
-
-/* FILTRE CHIPS */
-.class-filter-row {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 25px;
-    overflow-x: auto;
-    padding-bottom: 10px;
-}
-
+.search-input { flex: 1; border: none; outline: none; font-weight: 700; font-size: 1rem; color: #1e293b; }
+.class-filter-row { display: flex; gap: 10px; margin-bottom: 25px; overflow-x: auto; padding-bottom: 10px; }
 .class-chip {
-    padding: 8px 16px;
-    border-radius: 12px;
-    background: white;
-    border: 1px solid #e2e8f0;
-    font-weight: 800;
-    font-size: 0.7rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    color: #64748b;
-    white-space: nowrap;
+    padding: 8px 16px; border-radius: 12px; background: white; border: 1px solid #e2e8f0;
+    font-weight: 800; font-size: 0.7rem; cursor: pointer; transition: all 0.2s; color: #64748b; white-space: nowrap;
 }
-
-.class-chip.active {
-    background: #4f46e5;
-    color: white;
-    border-color: #4f46e5;
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
-}
-
-/* CARTES ITEMS */
+.class-chip.active { background: #4f46e5; color: white; border-color: #4f46e5; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2); }
 .item-card {
-    background: white;
-    border-radius: 25px;
-    padding: 20px 30px;
-    margin-bottom: 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border: 1px solid #f1f5f9;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    background: white; border-radius: 25px; padding: 20px 30px; margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
 }
-
-.item-main {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.item-title {
-    font-weight: 900;
-    font-size: 1rem;
-    text-transform: uppercase;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: #1e293b;
-}
-
-.badge-niv {
-    background: #eff6ff;
-    color: #2563eb;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 0.6rem;
-    font-weight: 950;
-    border: 1px solid #dbeafe;
-}
-
-.item-sub {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: #94a3b8;
-    text-transform: uppercase;
-}
-
-/* ACTIONS CARTES */
-.item-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
+.item-main { display: flex; flex-direction: column; gap: 4px; }
+.item-title { font-weight: 900; font-size: 1rem; text-transform: uppercase; display: flex; align-items: center; gap: 10px; color: #1e293b; }
+.badge-niv { background: #eff6ff; color: #2563eb; padding: 2px 8px; border-radius: 6px; font-size: 0.6rem; font-weight: 950; border: 1px solid #dbeafe; }
+.item-sub { font-size: 0.7rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+.item-actions { display: flex; gap: 10px; align-items: center; }
 .btn-action {
-    padding: 10px 20px;
-    border-radius: 12px;
-    font-size: 0.65rem;
-    font-weight: 900;
-    border: none;
-    cursor: pointer;
-    text-transform: uppercase;
-    transition: all 0.2s;
+    padding: 10px 20px; border-radius: 12px; font-size: 0.65rem; font-weight: 900; border: none;
+    cursor: pointer; text-transform: uppercase; transition: all 0.2s;
 }
-
+/* NOUVEAU STYLE POUR LE BOUTON LISTE */
+.btn-list { background: #e0f2fe; color: #0369a1; }
 .btn-gerer { background: #f5f3ff; color: #7c3aed; }
 .btn-modif { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
 .btn-delete { 
-    background: #fff1f2; 
-    color: #e11d48; 
-    width: 38px; 
-    height: 38px; 
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.1rem;
+    background: #fff1f2; color: #e11d48; width: 38px; height: 38px; padding: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
 }
-
 .btn-action:hover { transform: scale(1.05); filter: brightness(0.95); }
 
-/* --- MODALE --- */
-.col-selector {
+/* --- SELECTION GRID (Relations Profs/Elèves) --- */
+.selection-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    max-height: 150px;
+    overflow-y: auto;
     background: #f8fafc;
-    padding: 15px;
-    border-radius: 20px;
+    padding: 10px;
+    border-radius: 12px;
     border: 1px solid #e2e8f0;
 }
-.col-title { font-size: 0.65rem; font-weight: 950; color: #64748b; text-transform: uppercase; margin-bottom: 10px; display: block; }
-.scroll-list { height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
-.select-btn { width: 100%; text-align: left; padding: 12px; border-radius: 10px; background: white; border: 1px solid #f1f5f9; font-size: 0.75rem; font-weight: 800; cursor: pointer; }
-.select-btn.active { background: #4f46e5; color: white; border-color: #4338ca; }
+
+.toggle-chip {
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    cursor: pointer;
+    border: 1px solid #e2e8f0;
+    background: white;
+    color: #64748b;
+    transition: all 0.15s;
+    user-select: none;
+    text-transform: uppercase;
+}
+
+.toggle-chip:hover { border-color: #cbd5e1; color: #1e293b; }
+
+.toggle-chip.selected {
+    background: #4f46e5;
+    color: white;
+    border-color: #4f46e5;
+    box-shadow: 0 2px 5px rgba(79, 70, 229, 0.3);
+}
+
+.form-label {
+    font-size: 0.7rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-top: 12px;
+    display: block;
+}
 [[[£ END: client/src/features/admin/AdminDashboard.css £]]]
 
 [[[£ FILE: client/src/features/admin/AdminDashboard.jsx £]]]
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './AdminDashboard.css';
 
 export default function AdminDashboard({ user }) {
@@ -708,13 +666,20 @@ export default function AdminDashboard({ user }) {
     // États des Modales
     const [modalMode, setModalMode] = useState(null); 
     const [currentItem, setCurrentItem] = useState(null);
-    const [manageItem, setManageItem] = useState(null); 
+    const [viewingClass, setViewingClass] = useState(null);
+    const [zoomedItem, setZoomedItem] = useState(null);
     
-    // États Magic Import
+    // États Magic Import & CSV
     const [importing, setImporting] = useState(false);
     const [showMagicModal, setShowMagicModal] = useState(false);
     const [magicText, setMagicText] = useState("");
+    const [magicLog, setMagicLog] = useState("");
     
+    // Refs pour upload fichier
+    const fileInputRef = useRef(null);
+    const classCsvInputRef = useRef(null); 
+    const [targetImportClass, setTargetImportClass] = useState(null); 
+
     // Données Globales
     const [allClasses, setAllClasses] = useState([]);
     const [allSubjects, setAllSubjects] = useState([]);
@@ -725,7 +690,7 @@ export default function AdminDashboard({ user }) {
         'groups': 'classrooms', 
         'teachers': 'teachers', 
         'students': 'students', 
-        'staff': 'admins',
+        'administrateurs': 'admins', 
         'subjects': 'subjects'
     };
 
@@ -755,68 +720,55 @@ export default function AdminDashboard({ user }) {
 
     useEffect(() => { loadData(); }, [view]);
 
-    // --- HANDLERS ---
-
+    // --- HANDLERS CRUD ---
     const handleOpenCreate = () => {
         let defaults = { 
             name: '', firstName: '', lastName: '', password: '123', 
             type: view === 'groups' ? 'GROUP' : 'CLASS', 
             taughtSubjects: [], assignedClasses: [], assignedGroups: [],
-            email: '', parentEmail: '', level: ''
+            email: '', parentEmail: '', level: '',
+            gender: 'M', birthDate: ''
         };
         setCurrentItem(defaults);
         setModalMode('create');
     };
 
     const handleDelete = async (id) => {
-        if (!confirm("⚠️ Action Irréversible. Supprimer ?")) return;
+        if (!confirm("⚠️ Confirmer la suppression ?")) return;
         await fetch(`/api/admin/${collectionMap[view]}/${id}`, { method: 'DELETE' });
         loadData();
-    };
-
-    const handlePurge = async () => {
-        const targetLabel = view === 'students' && activeClassTab !== 'TOUS' 
-            ? `tous les élèves de la classe ${allClasses.find(c=>c._id===activeClassTab)?.name}`
-            : `toute la catégorie ${view.toUpperCase()}`;
-
-        if (!confirm(`🚨 ATTENTION : Vous allez supprimer définitivement ${targetLabel}.\n\nConfirmer la purge massive ?`)) return;
-        
-        setImporting(true);
-        try {
-            await fetch(`/api/admin/maintenance/purge/${collectionMap[view]}`, {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ 
-                    filterClassId: view === 'students' && activeClassTab !== 'TOUS' ? activeClassTab : null,
-                    keepMeId: user.id || user._id 
-                })
-            });
-            alert("✅ Purge terminée.");
-            loadData();
-        } catch (e) { alert("Erreur purge."); }
-        setImporting(false);
     };
 
     const handleSave = async () => {
         const targetCollection = collectionMap[view];
         let dataToSend = { ...currentItem };
         
-        // Logique spéciale Profs
         if (view === 'teachers') {
-            dataToSend.taughtSubjects = (dataToSend.taughtSubjects || []).map(s => s._id || s);
-            dataToSend.assignedClasses = (dataToSend.assignedClasses || []).map(c => c._id || c);
+            const subjects = Array.isArray(dataToSend.taughtSubjects) ? dataToSend.taughtSubjects : [];
+            const classes = Array.isArray(dataToSend.assignedClasses) ? dataToSend.assignedClasses : [];
+
+            dataToSend.taughtSubjects = subjects;
+            dataToSend.assignedClasses = classes;
             
             dataToSend.taughtSubjectsText = allSubjects
-                .filter(s => dataToSend.taughtSubjects.includes(s._id))
-                .map(s => s.name).join(', ');
-            
+                .filter(s => subjects.includes(s._id))
+                .map(s => s.name)
+                .join(', ');
+                
             dataToSend.assignedClassesText = allClasses
-                .filter(c => dataToSend.assignedClasses.includes(c._id))
-                .map(c => c.name).join(', ');
+                .filter(c => classes.includes(c._id))
+                .map(c => c.name)
+                .join(', ');
         }
 
-        if (view === 'students' && dataToSend.assignedGroups) {
-             dataToSend.assignedGroups = dataToSend.assignedGroups.map(g => g._id || g);
+        if (view === 'students') {
+             dataToSend.assignedGroups = Array.isArray(dataToSend.assignedGroups) ? dataToSend.assignedGroups : [];
+             const mainClass = allClasses.find(c => c._id === dataToSend.classId);
+             dataToSend.currentClass = mainClass ? mainClass.name : "SANS CLASSE";
+        }
+
+        if (view === 'groups') {
+            dataToSend.type = 'GROUP'; 
         }
 
         await fetch(`/api/admin/${targetCollection}`, { 
@@ -827,65 +779,196 @@ export default function AdminDashboard({ user }) {
         setModalMode(null); loadData();
     };
 
-    const handleMagicImport = async () => {
-        setImporting(true);
-        setTimeout(() => {
-            setImporting(false);
-            setShowMagicModal(false);
-            alert("⚠️ Fonction IA en cours de maintenance. Utilisez l'ajout manuel.");
-        }, 1000);
-    };
-
-    const filteredItems = items.filter(it => {
-        const searchMatch = (it.name || it.firstName || "").toLowerCase().includes(searchTerm.toLowerCase()) || (it.lastName || "").toLowerCase().includes(searchTerm.toLowerCase());
-        if (view === 'students' && activeClassTab !== 'TOUS') {
-            return searchMatch && String(it.classId) === String(activeClassTab);
-        }
-        return searchMatch;
-    });
-
-    // Helper pour ajouter une entité (ID) à une liste dans currentItem
-    const addItemToList = (field, id) => {
-        if (!id) return;
-        const currentList = (currentItem[field] || []).map(x => x._id || x);
-        if (!currentList.includes(id)) {
+    const toggleRelation = (field, id) => {
+        if (!currentItem) return;
+        const currentList = Array.isArray(currentItem[field]) ? [...currentItem[field]] : [];
+        if (currentList.includes(id)) {
+            setCurrentItem({ ...currentItem, [field]: currentList.filter(x => x !== id) });
+        } else {
             setCurrentItem({ ...currentItem, [field]: [...currentList, id] });
         }
     };
 
-    // Helper pour retirer une entité
-    const removeItemFromList = (field, id) => {
-        const currentList = (currentItem[field] || []).map(x => x._id || x);
-        setCurrentItem({ ...currentItem, [field]: currentList.filter(x => x !== id) });
+    // --- 📥 IMPORT CSV ---
+    const triggerClassImport = (classId) => {
+        setTargetImportClass(classId);
+        if (classCsvInputRef.current) classCsvInputRef.current.click();
     };
 
-    // --- RENDER ---
+    const handleClassFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (!file || !targetImportClass) return;
+
+        setImporting(true);
+        setShowMagicModal(true); 
+        setMagicLog(`📂 Lecture : ${file.name}...\n`);
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const text = evt.target.result;
+                const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
+                if (lines.length < 1) throw new Error("Fichier vide.");
+
+                const headerLineIndex = 0; 
+                const headerLine = lines[headerLineIndex];
+                const separator = headerLine.includes(';') ? ';' : ',';
+                const headers = headerLine.split(separator).map(h => h.trim().toLowerCase());
+
+                setMagicLog(`📋 Détection Colonnes : ${headers.join(' | ')}\n`);
+
+                const map = {
+                    email: headers.findIndex(h => h.includes('mail') || h.includes('courriel')),
+                    lastName: headers.findIndex(h => h.includes('nom') || h.includes('last')),
+                    firstName: headers.findIndex(h => h.includes('prénom') || h.includes('prenom') || h.includes('first')),
+                    options: headers.findIndex(h => h.includes('option') || h.includes('groupe'))
+                };
+
+                const classObj = allClasses.find(c => c._id === targetImportClass);
+                const targetClassName = classObj ? classObj.name.toUpperCase().trim() : "SANS CLASSE";
+
+                setMagicLog(`🎯 Cible : ${targetClassName}`);
+
+                let successCount = 0;
+                
+                for (let i = headerLineIndex + 1; i < lines.length; i++) {
+                    const lineStr = lines[i];
+                    const cols = lineStr.split(separator).map(c => c.trim());
+
+                    let email = map.email !== -1 ? cols[map.email] : "";
+                    let lastName = map.lastName !== -1 ? cols[map.lastName].toUpperCase() : "INCONNU";
+                    let firstName = map.firstName !== -1 ? cols[map.firstName] : "Élève";
+                    
+                    if (lastName === "INCONNU" && email.includes('@')) {
+                        const localPart = email.split('@')[0];
+                        const parts = localPart.split('.');
+                        if (parts.length > 0) lastName = parts[0].toUpperCase();
+                        if (parts.length > 1) firstName = parts[1];
+                    }
+
+                    if (lastName === "INCONNU" && !email) continue;
+
+                    await fetch('/api/admin/students', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify({
+                            firstName, 
+                            lastName, 
+                            email: email.toLowerCase(), 
+                            password: "123", 
+                            classId: targetImportClass, 
+                            currentClass: targetClassName, 
+                            assignedGroups: [],
+                            gender: 'M', 
+                            birthDate: ''
+                        })
+                    });
+                    successCount++;
+                    if(successCount % 5 === 0) setMagicLog(`... ${successCount} traités`);
+                }
+
+                setMagicLog(`\n🎉 TERMINÉ : ${successCount} élèves importés.`);
+
+                e.target.value = ""; 
+                setTimeout(() => {
+                    if (confirm(`Import terminé (${successCount} ajoutés). Recharger ?`)) {
+                        setShowMagicModal(false); setMagicLog(""); loadData();
+                    }
+                }, 1000);
+
+            } catch (err) {
+                setMagicLog(`❌ ERREUR : ${err.message}`);
+                e.target.value = ""; 
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    // --- MAGIC IMPORT IA ---
+    const handleMagicImport = async () => {
+        if (!magicText.trim()) return alert("Zone vide !");
+        setImporting(true);
+        setMagicLog("🧠 Analyse IA en cours...");
+        try {
+            const contextClassName = activeClassTab !== 'TOUS' ? allClasses.find(c => c._id === activeClassTab)?.name : "SANS CLASSE";
+            const res = await fetch('/api/admin/import/magic', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ text: magicText, contextClass: contextClassName })
+            });
+            const parsedList = await res.json();
+            if (!Array.isArray(parsedList)) throw new Error("Réponse IA invalide.");
+            
+            setMagicLog(`✅ ${parsedList.length} élèves détectés.`);
+            
+            for (const student of parsedList) {
+                const targetClass = allClasses.find(c => c.type === 'CLASS' && c.name === student.className);
+                const classId = targetClass ? targetClass._id : null;
+                const currentClass = targetClass ? targetClass.name : (student.className || "SANS CLASSE");
+                
+                let assignedGroups = [];
+                if (student.options && Array.isArray(student.options)) {
+                    assignedGroups = student.options.map(optName => {
+                        const grp = allClasses.find(c => c.type === 'GROUP' && c.name === optName);
+                        return grp ? grp._id : null;
+                    }).filter(id => id !== null);
+                }
+
+                await fetch('/api/admin/students', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                        firstName: student.firstName || "Inconnu", 
+                        lastName: student.lastName || "INCONNU", 
+                        email: student.email || "", 
+                        password: student.password || "123456",
+                        classId: classId, 
+                        currentClass: currentClass, 
+                        assignedGroups: assignedGroups,
+                        gender: 'M', 
+                        birthDate: '' 
+                    })
+                });
+                setMagicLog(`🔨 Création : ${student.firstName} ${student.lastName}`);
+            }
+            setMagicLog(`🎉 Import terminé.`);
+            setTimeout(() => { setShowMagicModal(false); setMagicText(""); setMagicLog(""); loadData(); }, 2000);
+        } catch (e) { setMagicLog("❌ ERREUR: " + e.message); }
+        setImporting(false);
+    };
+
+    const filteredItems = items.filter(it => {
+        const searchMatch = (it.name || it.firstName || "").toLowerCase().includes(searchTerm.toLowerCase()) || (it.lastName || "").toLowerCase().includes(searchTerm.toLowerCase());
+        if (view === 'students' && activeClassTab !== 'TOUS') { return searchMatch && String(it.classId) === String(activeClassTab); }
+        return searchMatch;
+    });
 
     return (
         <div className="admin-container animate-in fade-in">
-            {importing && <div className="zoom-overlay level-2"><div className="text-white font-black text-2xl animate-pulse">⚙️ TRAITEMENT EN COURS...</div></div>}
+            <input type="file" ref={classCsvInputRef} className="hidden" accept=".csv,.txt" onChange={handleClassFileSelect} />
+
+            {importing && <div className="zoom-overlay level-2">
+                <div className="text-white font-black text-2xl flex flex-col items-center gap-4">
+                    <div className="animate-spin text-5xl">⚙️</div>
+                    <div className="animate-pulse whitespace-pre-line text-center">{magicLog || "TRAITEMENT..."}</div>
+                </div>
+            </div>}
             
-            {/* TOOLBAR */}
             <div className="admin-toolbar-pill">
                 <div className="nav-links">
-                    {['classes', 'groups', 'subjects', 'teachers', 'students', 'staff'].map(v => (
+                    {['classes', 'groups', 'subjects', 'teachers', 'students', 'administrateurs'].map(v => (
                         <button key={v} onClick={() => setView(v)} className={`nav-link ${view === v ? 'active' : ''}`}>{v}</button>
                     ))}
                 </div>
                 <div className="action-buttons">
-                    <button onClick={handlePurge} className="btn-pill btn-clean">🔥 PURGER</button>
-                    {(view === 'classes' || view === 'groups' || view === 'students') && ( <button onClick={() => setShowMagicModal(true)} className="btn-pill btn-import">🔮 IA IMPORT</button> )}
-                    <button onClick={handleOpenCreate} className="btn-pill btn-add">+ AJOUTER</button>
+                    <button onClick={handleOpenCreate} className="btn-pill btn-add">+ CRÉER</button>
+                    <button onClick={() => setShowMagicModal(true)} className="btn-pill btn-import">✨ MAGIC IMPORT</button>
                 </div>
             </div>
 
-            {/* RECHERCHE */}
             <div className="search-container">
                 <span className="text-slate-400">🔎</span>
-                <input className="search-input" placeholder={`Filtrer dans ${view}...`} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                <input className="search-input" placeholder={`Rechercher dans ${view}...`} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
             
-            {/* FILTRES ÉLÈVES */}
             {view === 'students' && ( 
                 <div className="class-filter-row"> 
                     <button onClick={() => setActiveClassTab('TOUS')} className={`class-chip ${activeClassTab === 'TOUS' ? 'active' : ''}`}>TOUS</button>
@@ -895,7 +978,6 @@ export default function AdminDashboard({ user }) {
                 </div> 
             )}
 
-            {/* LISTE DES ITEMS */}
             <div className="items-list">
                 {loading ? ( <div className="p-20 text-center animate-pulse text-slate-300 font-black uppercase">Chargement...</div> ) : filteredItems.map(it => (
                     <div key={it._id} className="item-card">
@@ -907,12 +989,23 @@ export default function AdminDashboard({ user }) {
                             </span>
                             <span className="item-sub">
                                 {view === 'teachers' 
-                                    ? (it.taughtSubjectsText || 'Aucune matière') + ' • ' + (it.assignedClassesText || 'Aucune classe')
+                                    ? (it.taughtSubjectsText || 'Aucune matière') 
                                     : (it.role || it.type || 'DATA')}
                             </span>
                         </div>
                         <div className="item-actions">
-                            {(view === 'classes' || view === 'groups') && <button onClick={() => setManageItem(it)} className="btn-action btn-gerer">👥 MEMBRES</button>}
+                            {(view === 'classes' || view === 'groups') && (
+                                <button onClick={() => setViewingClass(it)} className="btn-action btn-list">👥 ÉLÈVES</button>
+                            )}
+
+                            {view === 'classes' && (
+                                <button onClick={() => triggerClassImport(it._id)} className="btn-import-mini">📥 IMPORT CSV</button>
+                            )}
+                            
+                            {view === 'students' && (
+                                <button onClick={() => setZoomedItem(it)} className="btn-action bg-cyan-50 text-cyan-600 border border-cyan-100 hover:bg-cyan-500 hover:text-white">🔍</button>
+                            )}
+
                             <button onClick={() => { setCurrentItem(it); setModalMode('edit'); }} className="btn-action btn-modif">ÉDITER</button>
                             <button onClick={() => handleDelete(it._id)} className="btn-action btn-delete">✕</button>
                         </div>
@@ -920,224 +1013,237 @@ export default function AdminDashboard({ user }) {
                 ))}
             </div>
 
-            {/* 1. MODALE MEMBRES */}
-            {manageItem && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setManageItem(null)}>
-                    <div className="bg-white w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-black text-lg uppercase text-slate-700 flex items-center gap-2">
-                                <span className="text-2xl">👥</span>
-                                <span>MEMBRES : <span className="text-indigo-600">{manageItem.name}</span></span>
-                            </h3>
-                            <button onClick={() => setManageItem(null)} className="w-8 h-8 rounded-full bg-white hover:bg-red-50 text-slate-400 hover:text-red-500 font-black transition-colors">✕</button>
+            {zoomedItem && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setZoomedItem(null)}>
+                    <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                        <div className="bg-indigo-600 p-6 text-white text-center">
+                            <div className="text-4xl mb-2">{zoomedItem.gender === 'F' ? '👩' : '👨'}</div>
+                            <h2 className="text-2xl font-black uppercase">{zoomedItem.firstName} {zoomedItem.lastName}</h2>
+                            <div className="opacity-80 font-bold tracking-widest text-xs mt-1">{zoomedItem.email}</div>
                         </div>
-                        <div className="p-0 h-96 overflow-y-auto custom-scrollbar bg-white">
-                            {allStudents.filter(s => String(s.classId) === String(manageItem._id) || (s.assignedGroups && s.assignedGroups.includes(manageItem._id))).length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-4">
-                                    <span className="text-6xl grayscale opacity-20">👻</span>
-                                    <span className="font-bold text-xs uppercase tracking-widest">Aucun élève dans ce groupe</span>
-                                </div>
-                            ) : (
-                                <table className="w-full text-left border-collapse">
-                                    <thead className="bg-slate-50 sticky top-0 z-10 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                                        <tr>
-                                            <th className="p-4 border-b pl-6">Nom de l'élève</th>
-                                            <th className="p-4 border-b text-right pr-6">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {allStudents.filter(s => String(s.classId) === String(manageItem._id) || (s.assignedGroups && s.assignedGroups.includes(manageItem._id))).map(s => (
-                                            <tr key={s._id} className="hover:bg-indigo-50/50 transition-colors group cursor-pointer" onClick={() => { setManageItem(null); setCurrentItem(s); setView('students'); setModalMode('edit'); }}>
-                                                <td className="p-3 pl-6">
-                                                    <div className="font-bold text-slate-700 text-sm">{s.lastName} {s.firstName}</div>
-                                                    <div className="text-[10px] text-slate-400 font-mono">{s.email}</div>
-                                                </td>
-                                                <td className="p-3 text-right pr-6">
-                                                    <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-[9px] font-black text-slate-400 uppercase group-hover:bg-indigo-600 group-hover:text-white group-hover:border-transparent transition-all">
-                                                        Voir Fiche
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
+                        <div className="p-6 space-y-4">
+                            <div className="flex justify-between border-b pb-2">
+                                <span className="text-slate-400 font-bold text-xs uppercase">Classe</span>
+                                <span className="font-black text-slate-800">{zoomedItem.currentClass || "N/A"}</span>
+                            </div>
+                            <div className="flex justify-between border-b pb-2">
+                                <span className="text-slate-400 font-bold text-xs uppercase">Groupes</span>
+                                <span className="font-black text-slate-800 text-right text-xs">
+                                    {(zoomedItem.assignedGroups || []).map(gId => {
+                                        const g = allClasses.find(c => c._id === gId);
+                                        return g ? g.name : "";
+                                    }).filter(Boolean).join(', ') || "Aucun"}
+                                </span>
+                            </div>
+                            <div className="flex justify-between border-b pb-2">
+                                <span className="text-slate-400 font-bold text-xs uppercase">Mot de passe</span>
+                                <span className="font-mono text-indigo-600 bg-indigo-50 px-2 rounded">{zoomedItem.password}</span>
+                            </div>
                         </div>
-                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                Total : {allStudents.filter(s => String(s.classId) === String(manageItem._id) || (s.assignedGroups && s.assignedGroups.includes(manageItem._id))).length} élèves
-                            </span>
-                            <button onClick={() => setManageItem(null)} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold text-xs hover:bg-slate-700 transition-all uppercase tracking-wide">Fermer</button>
+                        <div className="p-4 bg-slate-50 text-center">
+                            <button onClick={() => setZoomedItem(null)} className="btn-action w-full">FERMER</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* 2. MODALE CREATE/EDIT */}
-            {modalMode && (
+            {viewingClass && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setViewingClass(null)}>
+                    <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-black text-lg uppercase text-slate-700">LISTE {viewingClass.name}</h3>
+                            <button onClick={() => setViewingClass(null)} className="text-slate-400 hover:text-red-500 font-black">✕</button>
+                        </div>
+                        <div className="p-0 h-96 overflow-y-auto">
+                             {allStudents.filter(s => {
+                                 const isMainClass = String(s.classId) === String(viewingClass._id);
+                                 const isInGroup = (s.assignedGroups || []).includes(viewingClass._id);
+                                 return isMainClass || isInGroup;
+                             }).length === 0 
+                                ? <div className="p-10 text-center text-slate-300 font-bold uppercase">Aucun élève</div>
+                                : allStudents
+                                    .filter(s => String(s.classId) === String(viewingClass._id) || (s.assignedGroups || []).includes(viewingClass._id))
+                                    .sort((a,b) => a.lastName.localeCompare(b.lastName))
+                                    .map(s => (
+                                        <div key={s._id} className="p-4 border-b hover:bg-slate-50 flex justify-between items-center">
+                                            <div>
+                                                <div className="font-bold text-slate-700">{s.lastName} {s.firstName}</div>
+                                                <div className="text-[10px] text-slate-400 font-mono">{s.birthDate} • {s.gender}</div>
+                                            </div>
+                                            <span className="text-xs font-mono text-slate-400">{s.email}</span>
+                                        </div>
+                                    ))
+                             }
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {modalMode && currentItem && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setModalMode(null)}>
-                    <div className="bg-white w-full max-w-lg rounded-3xl p-8 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-black uppercase mb-6 text-slate-800">{modalMode === 'create' ? 'Ajouter' : 'Modifier'} {view.slice(0,-1)}</h3>
+                    <div className="bg-white w-full max-w-2xl rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-black uppercase mb-6 text-indigo-600">{modalMode === 'create' ? 'Création' : 'Modification'} {view}</h3>
                         
                         <div className="space-y-4 mb-8">
-                            {/* Identité (Tous) */}
-                            {(view === 'students' || view === 'teachers' || view === 'staff') && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm" placeholder="Prénom" value={currentItem.firstName||''} onChange={e=>setCurrentItem({...currentItem, firstName:e.target.value})} />
-                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm" placeholder="Nom" value={currentItem.lastName||''} onChange={e=>setCurrentItem({...currentItem, lastName:e.target.value})} />
-                                </div>
-                            )}
                             
-                            {(view === 'classes' || view === 'groups' || view === 'subjects') && (
-                                <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm" placeholder="Nom (ex: 6A, MATHS)" value={currentItem.name||''} onChange={e=>setCurrentItem({...currentItem, name:e.target.value})} />
-                            )}
-
-                            {/* --- SPÉCIFIQUE : PROFESSEURS --- */}
-                            {view === 'teachers' && (
-                                <div className="space-y-4">
-                                    {/* MATIÈRES (CHIPS) */}
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 mb-2 block">Matières</label>
-                                        <div className="flex flex-wrap gap-2 mb-2">
-                                            {(currentItem.taughtSubjects || []).map(id => {
-                                                const sub = allSubjects.find(s => s._id === (id._id || id));
-                                                if (!sub) return null;
-                                                return (
-                                                    <span key={sub._id} className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-bold border border-indigo-100 flex items-center gap-2">
-                                                        {sub.name}
-                                                        <button onClick={() => removeItemFromList('taughtSubjects', sub._id)} className="w-4 h-4 rounded-full bg-white hover:bg-red-500 hover:text-white flex items-center justify-center text-slate-400 transition-colors">×</button>
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                        <select 
-                                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase text-slate-500"
-                                            onChange={(e) => { addItemToList('taughtSubjects', e.target.value); e.target.value=""; }}
-                                        >
-                                            <option value="">+ Ajouter une matière</option>
-                                            {allSubjects.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
-                                        </select>
-                                    </div>
-
-                                    {/* CLASSES (CHIPS) */}
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 mb-2 block">Classes</label>
-                                        <div className="flex flex-wrap gap-2 mb-2">
-                                            {(currentItem.assignedClasses || []).map(id => {
-                                                const cls = allClasses.find(c => c._id === (id._id || id) && c.type === 'CLASS');
-                                                if (!cls) return null;
-                                                return (
-                                                    <span key={cls._id} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold border border-emerald-100 flex items-center gap-2">
-                                                        {cls.name}
-                                                        <button onClick={() => removeItemFromList('assignedClasses', cls._id)} className="w-4 h-4 rounded-full bg-white hover:bg-red-500 hover:text-white flex items-center justify-center text-slate-400 transition-colors">×</button>
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                        <select 
-                                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase text-slate-500"
-                                            onChange={(e) => { addItemToList('assignedClasses', e.target.value); e.target.value=""; }}
-                                        >
-                                            <option value="">+ Ajouter une classe</option>
-                                            {allClasses.filter(c => c.type === 'CLASS').map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-                                        </select>
-                                    </div>
-
-                                    {/* GROUPES (CHIPS) */}
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 mb-2 block">Groupes</label>
-                                        <div className="flex flex-wrap gap-2 mb-2">
-                                            {(currentItem.assignedClasses || []).map(id => {
-                                                const grp = allClasses.find(c => c._id === (id._id || id) && c.type === 'GROUP');
-                                                if (!grp) return null;
-                                                return (
-                                                    <span key={grp._id} className="px-3 py-1 bg-purple-50 text-purple-700 rounded-lg text-[10px] font-bold border border-purple-100 flex items-center gap-2">
-                                                        {grp.name}
-                                                        <button onClick={() => removeItemFromList('assignedClasses', grp._id)} className="w-4 h-4 rounded-full bg-white hover:bg-red-500 hover:text-white flex items-center justify-center text-slate-400 transition-colors">×</button>
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                        <select 
-                                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase text-slate-500"
-                                            onChange={(e) => { addItemToList('assignedClasses', e.target.value); e.target.value=""; }}
-                                        >
-                                            <option value="">+ Ajouter un groupe</option>
-                                            {allClasses.filter(c => c.type === 'GROUP').map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
-                                        </select>
-                                    </div>
+                             {/* NOUVEAUTÉ : SAISIE RAPIDE NOM COMPLET (POUR ÉLÈVES UNIQUEMENT) */}
+                             {view === 'students' && (
+                                <div className="mb-6 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                                    <label className="form-label !text-indigo-600 !mt-0 mb-2">⚡ Saisie Rapide (Nom Complet)</label>
+                                    <input 
+                                        className="w-full p-3 border-2 border-indigo-200 rounded-lg bg-white font-bold text-indigo-900 placeholder-indigo-200 focus:border-indigo-500 focus:outline-none" 
+                                        placeholder="ex: DE LA FONTAINE Jean" 
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            const parts = val.trim().split(/\s+/);
+                                            if (parts.length > 1) {
+                                                // Logique : Le dernier mot est le prénom, tout le reste est le nom
+                                                const fName = parts.pop();
+                                                const lName = parts.join(' ').toUpperCase();
+                                                setCurrentItem(prev => ({...prev, firstName: fName, lastName: lName}));
+                                            } else {
+                                                setCurrentItem(prev => ({...prev, lastName: val.toUpperCase()}));
+                                            }
+                                        }}
+                                    />
+                                    <div className="text-[10px] text-indigo-400 text-right mt-1 italic">Remplit automatiquement les champs ci-dessous</div>
                                 </div>
-                            )}
+                             )}
 
-                            {/* --- SPÉCIFIQUE : ÉLÈVES --- */}
-                            {view === 'students' && (
-                                <>
-                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm" placeholder="Email" value={currentItem.email||''} onChange={e=>setCurrentItem({...currentItem, email:e.target.value})} />
-                                    
-                                    <div className="grid grid-cols-1 gap-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1">Classe Principale</label>
-                                        <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-600" value={currentItem.classId||''} onChange={e=>setCurrentItem({...currentItem, classId:e.target.value})}>
-                                            <option value="">-- Sans Classe --</option>
-                                            {allClasses.filter(c=>c.type==='CLASS').map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-                                        </select>
+                             <div className="grid grid-cols-2 gap-4">
+                                <div className="flex flex-col">
+                                    <label className="form-label">Nom / Intitulé</label>
+                                    <input className="w-full p-3 border rounded font-bold uppercase" value={currentItem.lastName || currentItem.name || ''} onChange={e => setCurrentItem({...currentItem, lastName:e.target.value, name:e.target.value})} />
+                                </div>
+                                {(view === 'students' || view === 'teachers' || view === 'staff' || view === 'administrateurs') && (
+                                    <div className="flex flex-col">
+                                        <label className="form-label">Prénom</label>
+                                        <input className="w-full p-3 border rounded font-bold" value={currentItem.firstName||''} onChange={e=>setCurrentItem({...currentItem, firstName:e.target.value})} />
                                     </div>
+                                )}
+                             </div>
 
-                                    {/* ✅ GROUPES (CHIPS ÉLÈVES) - NOUVELLE VERSION */}
+                             {view === 'teachers' && (
+                                <>
                                     <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 mb-2 block">Groupes & Options</label>
-                                        <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-50 rounded-xl min-h-[40px] items-center">
-                                            {(currentItem.assignedGroups || []).length === 0 && <span className="text-xs text-slate-300 italic px-2">Aucun groupe</span>}
-                                            {(currentItem.assignedGroups || []).map(id => {
-                                                const group = allClasses.find(c => c._id === (id._id || id));
-                                                if (!group) return null;
-                                                return (
-                                                    <span key={group._id} className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-bold border border-indigo-100 flex items-center gap-2">
-                                                        {group.name}
-                                                        <button 
-                                                            onClick={() => removeItemFromList('assignedGroups', group._id)} 
-                                                            className="w-4 h-4 rounded-full bg-white hover:bg-red-500 hover:text-white flex items-center justify-center text-slate-400 transition-colors"
-                                                        >
-                                                            ×
-                                                        </button>
-                                                    </span>
-                                                );
-                                            })}
+                                        <label className="form-label">Matières enseignées</label>
+                                        <div className="selection-grid">
+                                            {allSubjects.map(sub => (
+                                                <div 
+                                                    key={sub._id} 
+                                                    onClick={() => toggleRelation('taughtSubjects', sub._id)}
+                                                    className={`toggle-chip ${currentItem.taughtSubjects.includes(sub._id) ? 'selected' : ''}`}
+                                                >
+                                                    {sub.name}
+                                                </div>
+                                            ))}
                                         </div>
-                                        <select 
-                                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px] font-bold uppercase text-slate-500 hover:border-indigo-300 transition-all"
-                                            onChange={(e) => { addItemToList('assignedGroups', e.target.value); e.target.value=""; }}
-                                        >
-                                            <option value="">+ Ajouter un groupe</option>
-                                            {allClasses.filter(c => c.type === 'GROUP').map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
-                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Classes & Groupes assignés</label>
+                                        <div className="selection-grid">
+                                            {allClasses.map(cls => (
+                                                <div 
+                                                    key={cls._id} 
+                                                    onClick={() => toggleRelation('assignedClasses', cls._id)}
+                                                    className={`toggle-chip ${currentItem.assignedClasses.includes(cls._id) ? 'selected' : ''}`}
+                                                >
+                                                    {cls.type === 'GROUP' ? '🛑' : '🟦'} {cls.name}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </>
-                            )}
-                        </div>
+                             )}
+                             
+                             {view === 'students' && (
+                                <>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="flex flex-col">
+                                            <label className="form-label">Sexe</label>
+                                            <select className="w-full p-3 border rounded bg-white" value={currentItem.gender || 'M'} onChange={e => setCurrentItem({...currentItem, gender:e.target.value})}>
+                                                <option value="M">Homme</option>
+                                                <option value="F">Femme</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <label className="form-label">Classe Principale</label>
+                                            <select className="w-full p-3 border rounded bg-white font-bold" value={currentItem.classId || ''} onChange={e => setCurrentItem({...currentItem, classId:e.target.value})}>
+                                                <option value="">-- AUCUNE --</option>
+                                                {allClasses.filter(c => c.type === 'CLASS').map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
 
-                        <div className="flex justify-end gap-3">
-                            <button onClick={() => setModalMode(null)} className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase text-slate-500 hover:bg-slate-100 transition-colors">Annuler</button>
-                            <button onClick={handleSave} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-200">Enregistrer</button>
+                                    <div>
+                                        <label className="form-label">Options & Groupes</label>
+                                        <div className="selection-grid">
+                                            {allClasses.filter(c => c.type === 'GROUP').map(grp => (
+                                                <div 
+                                                    key={grp._id} 
+                                                    onClick={() => toggleRelation('assignedGroups', grp._id)}
+                                                    className={`toggle-chip ${currentItem.assignedGroups?.includes(grp._id) ? 'selected' : ''}`}
+                                                >
+                                                    {grp.name}
+                                                </div>
+                                            ))}
+                                            {allClasses.filter(c => c.type === 'GROUP').length === 0 && <span className="text-xs text-slate-400 italic pl-2">Aucun groupe créé. Allez dans l'onglet 'Groupes'.</span>}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                         <input className="w-full p-3 border rounded bg-slate-50" placeholder="Email" value={currentItem.email||''} onChange={e=>setCurrentItem({...currentItem, email:e.target.value})} />
+                                         <input className="w-full p-3 border rounded bg-slate-50" placeholder="Mot de Passe" value={currentItem.password||''} onChange={e=>setCurrentItem({...currentItem, password:e.target.value})} />
+                                    </div>
+                                </>
+                             )}
+
+                             {(view === 'classes' || view === 'groups') && (
+                                 <div className="flex flex-col">
+                                     <label className="form-label">Type de structure</label>
+                                     <div className="flex gap-4 mt-2">
+                                         <button onClick={() => setCurrentItem({...currentItem, type: 'CLASS'})} className={`flex-1 p-3 rounded-xl border-2 font-black ${currentItem.type === 'CLASS' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-400'}`}>CLASSE (ex: 6A)</button>
+                                         <button onClick={() => setCurrentItem({...currentItem, type: 'GROUP'})} className={`flex-1 p-3 rounded-xl border-2 font-black ${currentItem.type === 'GROUP' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-400'}`}>GROUPE (ex: 3B ANGLAIS)</button>
+                                     </div>
+                                 </div>
+                             )}
+
+                             {view === 'administrateurs' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                     <input className="w-full p-3 border rounded bg-slate-50" placeholder="Mot de Passe" value={currentItem.password||''} onChange={e=>setCurrentItem({...currentItem, password:e.target.value})} />
+                                </div>
+                             )}
+                        </div>
+                        <div className="flex justify-end gap-3 pt-6 border-t">
+                            <button onClick={() => setModalMode(null)} className="btn-action">Annuler</button>
+                            <button onClick={handleSave} className="btn-action bg-indigo-600 text-white">Sauvegarder</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* 3. MODALE MAGIC IMPORT */}
             {showMagicModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setShowMagicModal(false)}>
                     <div className="bg-white w-full max-w-3xl rounded-3xl p-8 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-black uppercase mb-2 text-indigo-600">🔮 Magic Import IA</h3>
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-6">Collez un tableau Excel ou une liste brute, l'IA s'occupe du reste.</p>
-                        <textarea 
-                            className="w-full h-64 bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 font-mono text-xs focus:border-indigo-500 outline-none resize-none mb-6"
-                            placeholder="Exemple :&#10;Dupont Jean 6A Option Anglais&#10;Durand Marie 6B"
-                            value={magicText}
-                            onChange={e => setMagicText(e.target.value)}
-                        />
-                        <div className="flex justify-end gap-3">
+                        <h3 className="text-xl font-black uppercase mb-2 text-indigo-600">Import Élèves (IA)</h3>
+                        <div className="flex justify-between items-center mb-4">
+                            <p className="text-xs font-bold text-slate-400 uppercase">Collez une liste brute (Excel, Word, Texte) ou importez un CSV.</p>
+                        </div>
+                        {magicLog ? (
+                            <div className="w-full h-64 bg-slate-900 text-emerald-400 font-mono text-xs p-4 rounded-2xl overflow-y-auto border-2 border-slate-800">
+                                {magicLog.split('\n').map((l, i) => <div key={i}>{l}</div>)}
+                            </div>
+                        ) : (
+                            <textarea 
+                                className="w-full h-64 bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 font-mono text-xs focus:border-indigo-500 outline-none resize-none mb-6"
+                                placeholder="Exemple :&#10;Dupont Jean 6A Option Latin&#10;Durand Pierre 5B LVA Anglais..."
+                                value={magicText}
+                                onChange={e => setMagicText(e.target.value)}
+                            />
+                        )}
+                        <div className="flex justify-end gap-3 mt-4">
                             <button onClick={() => setShowMagicModal(false)} className="px-5 py-3 rounded-xl font-bold text-xs uppercase text-slate-500 hover:bg-slate-100">Fermer</button>
-                            <button onClick={handleMagicImport} className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-black text-xs uppercase hover:shadow-lg hover:scale-105 transition-all">Lancer l'analyse</button>
+                            {!magicLog && <button onClick={handleMagicImport} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase">Lancer l'Analyse</button>}
                         </div>
                     </div>
                 </div>
@@ -1190,77 +1296,40 @@ export default function AdminDashboard({ user }) {
 [[[£ END: client/src/features/admin/AdminPage.css £]]]
 
 [[[£ FILE: client/src/features/admin/AdminPage.jsx £]]]
-// @signatures: AdminPage, checkHealth, handleRefresh
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react'; // Ajout useState
 import AdminDashboard from './AdminDashboard';
-import DatabaseViewer from './components/DatabaseViewer'; // ✅ Importé ici maintenant
+import DatabaseViewer from './components/DatabaseViewer'; // Réintégration
 import './AdminPage.css';
 
 export default function AdminPage({ user, onLogout }) {
-  const [dbStatus, setDbStatus] = useState('LOADING'); 
-  const [drive, setDrive] = useState({ ok: false, email: '', loading: true });
-  const [showDB, setShowDB] = useState(false); // ✅ État géré ici pour la fusion
-
-  const checkHealth = async () => {
-      try {
-          const resBoot = await fetch('/api/check-deploy');
-          const dataBoot = await resBoot.json();
-          setDbStatus(dataBoot.db === "CONNECTED" ? "OK" : "OFFLINE");
-
-          const resDrive = await fetch('/api/admin/drive-check');
-          const dataDrive = await resDrive.json();
-          setDrive({ ok: dataDrive.ok, email: dataDrive.email, loading: false });
-      } catch (e) {
-          setDbStatus("OFFLINE");
-          setDrive(prev => ({ ...prev, ok: false, loading: false }));
-      }
-  };
-
-  useEffect(() => {
-      checkHealth();
-      const timer = setInterval(checkHealth, 10000);
-      return () => clearInterval(timer);
-  }, []);
+  const [showDB, setShowDB] = useState(false);
 
   return (
     <div className="admin-page-wrapper">
       <div className="admin-header-bar">
-        {/* --- GAUCHE : IDENTITÉ + BOUTON STATUT FUSIONNÉ --- */}
+        {/* --- IDENTITÉ --- */}
         <div className="flex items-center gap-6">
             <div className="admin-identity">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter leading-none">
-                        {user.firstName} {user.lastName}
-                    </h1>
-                    
-                    {/* ✅ BOUTON-PASTILLE BDD FUSIONNÉ */}
+                <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter leading-none">
+                    {user.firstName} {user.lastName}
+                </h1>
+                <div className="flex items-center gap-3 mt-1.5">
+                    <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                        Administrateur Établissement
+                    </span>
+                    {/* BOUTON BDD RÉTABLI */}
                     <button 
                         onClick={() => setShowDB(true)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 transition-all active:scale-95 ${
-                            dbStatus === 'OK' 
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-500 hover:text-white' 
-                            : (dbStatus === 'LOADING' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-red-50 border-red-200 text-red-600 animate-pulse')
-                        }`}
+                        className="bg-slate-100 text-slate-500 hover:bg-indigo-100 hover:text-indigo-600 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border border-slate-200 transition-colors"
                     >
-                        <div className={`w-2 h-2 rounded-full ${dbStatus === 'OK' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                        <span className="text-[10px] font-black uppercase tracking-widest">📊 BDD</span>
+                        📊 Voir BDD
                     </button>
-                </div>
-
-                <div className="flex items-center gap-3 mt-1.5 ml-0.5">
-                    <div className="flex items-center gap-1.5">
-                        <div className={`w-2 h-2 rounded-full ${drive.ok ? 'bg-purple-500' : 'bg-slate-300'}`}></div>
-                        <span className="text-[9px] font-bold uppercase text-slate-300 tracking-wider">
-                            {drive.ok ? `PRO : ${drive.email}` : 'DRIVE DÉCONNECTÉ'}
-                        </span>
-                    </div>
                 </div>
             </div>
         </div>
 
-        {/* --- DROITE : ICONE + DÉCONNEXION --- */}
+        {/* --- DÉCONNEXION --- */}
         <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-xl shadow-lg">🛡️</div>
             <button onClick={onLogout} className="bg-white text-slate-400 hover:text-red-500 px-4 py-2 rounded-xl font-black text-[10px] border border-slate-200 transition-all uppercase tracking-widest">
                 Déconnexion
             </button>
@@ -1271,7 +1340,7 @@ export default function AdminPage({ user, onLogout }) {
         <AdminDashboard user={user} />
       </div>
 
-      {/* ✅ LA MODALE EST MAINTENANT APPELÉE DEPUIS LE HEADER */}
+      {/* MODALE BDD */}
       {showDB && <DatabaseViewer onClose={() => setShowDB(false)} />}
     </div>
   );
@@ -2016,14 +2085,17 @@ const DriveEngine = {
                 if (refresh) {
                     oauth2Client.setCredentials({ refresh_token: refresh });
                     driveInstance = google.drive({ version: 'v3', auth: oauth2Client });
-                    console.log("✅ Drive Engine Initialisé.");
+                    console.log("✅ Drive Engine : Configuration chargée.");
                 } else {
-                    console.warn("⚠️ Drive Engine : Pas de Refresh Token dans .env");
+                    console.warn("⚠️ Drive Engine : Pas de Refresh Token dans .env (Mode Déconnecté)");
                 }
             } else {
                 console.error("❌ Drive Engine : Client ID/Secret manquants.");
             }
-        } catch (e) { console.error("Drive Init Error", e.message); }
+        } catch (e) { 
+            console.error("❌ Drive Init Error (Non bloquant):", e.message); 
+            // On ne crash pas le serveur, le Drive sera juste indisponible
+        }
     },
 
     // --- MÉTHODES OAUTH (Pour regénérer le token) ---
@@ -2049,8 +2121,9 @@ const DriveEngine = {
             const res = await driveInstance.about.get({ fields: 'user(emailAddress)' });
             return { ok: true, email: res.data.user.emailAddress };
         } catch (e) { 
-            console.error("Test Auth Fail:", e.message);
-            return { ok: false, error: "Session expirée ou invalide. Regénérez le token." }; 
+            console.error("⚠️ Drive Auth Fail (Token expiré ?):", e.message);
+            // Si erreur invalid_grant, on retourne une erreur propre sans crasher
+            return { ok: false, error: "Session expirée (INVALID_GRANT). Regénérez le token." }; 
         }
     },
 
@@ -2098,7 +2171,6 @@ const DriveEngine = {
 
     getFileStream: async (fileId) => {
         try {
-            // On recrée une instance légère pour le stream si besoin, ou on utilise l'existante
             const drive = google.drive({ version: 'v3', auth: DriveEngine.oauth2Client });
             const res = await drive.files.get(
                 { fileId: fileId, alt: 'media' },
@@ -2170,7 +2242,8 @@ module.exports = OCREngine;
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const AdminExpert = require('./experts/admin.expert'); // ✅ Import vital pour le Dump
+const AdminExpert = require('./experts/admin.expert'); 
+const AdminAI = require('./ai/admin.ai'); // Import de l'IA
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -2182,7 +2255,23 @@ router.get('/students', asyncHandler(async (req, res) => res.json(await mongoose
 router.get('/teachers', asyncHandler(async (req, res) => res.json(await mongoose.model('Teacher').find({}).sort({ lastName: 1 }).lean())));
 router.get('/admins', asyncHandler(async (req, res) => res.json(await mongoose.model('Admin').find({}).sort({ lastName: 1 }).lean())));
 
-// --- 📊 ROUTE DE DIAGNOSTIC (Celle qui manquait pour le bouton BDD) ---
+// --- 🧠 ROUTE INTELLIGENCE ARTIFICIELLE ---
+// Permet de parser une liste d'élèves brute via Gemini
+router.post('/import/magic', asyncHandler(async (req, res) => {
+    const { text, contextClass } = req.body;
+    if (!text) return res.status(400).json({ error: "Aucun texte fourni" });
+
+    try {
+        console.log(`🧠 [API] Demande Magic Import pour la classe contexte: ${contextClass}`);
+        const result = await AdminAI.parseRawStudentData(text, contextClass || "SANS CLASSE");
+        res.json(result);
+    } catch (e) {
+        console.error("Erreur Magic Import:", e);
+        res.status(500).json({ error: "Erreur IA: " + e.message });
+    }
+}));
+
+// --- 📊 ROUTE DE DIAGNOSTIC ---
 router.get('/database-dump', asyncHandler(async (req, res) => {
     try {
         const dump = await AdminExpert.getFullDump();
@@ -2218,7 +2307,7 @@ router.post('/maintenance/purge/:collection', asyncHandler(async (req, res) => {
     }
 
     // Filtre : Si on purge les étudiants d'une classe précise
-    if (collection === 'students' && filterClassId) {
+    if (collection === 'students' && filterClassId && filterClassId !== 'TOUS') {
         query = { classId: filterClassId };
     }
 
@@ -2248,46 +2337,63 @@ const AIEngine = require('../../../core/ai.engine');
 
 const AdminAI = {
     parseRawStudentData: async (rawText, contextClass) => {
-        console.log("🧠 [AI] Analyse Magic Import V166 (Mode Tableau)...");
+        console.log("🧠 [AI] Analyse Magic Import V301 (Opti: Options & Groups)...");
         
-        const system = `Tu es un expert en extraction de données scolaires (Data Mining).
-        Ta mission : Convertir un texte en vrac (ou un tableau copié-collé) en JSON strict.
+        // On sécurise la taille de l'entrée
+        const cleanedText = rawText ? rawText.substring(0, 30000) : "";
 
-        RÈGLES D'EXTRACTION :
-        1. STRUCTURE : Si tu vois des barres '|', c'est un tableau. Utilise les en-têtes pour identifier les colonnes.
-        2. IDENTITÉ : Cherche 'Nom', 'Prénom', 'Élève'. Sépare Nom et Prénom.
-        3. CLASSE : Cherche une colonne 'Classe'. Si elle existe (ex: 2C, 2D), utilise-la pour chaque élève ! Sinon, utilise le contexte "${contextClass}".
-        4. OPTIONS : Cherche la colonne 'Options'. Si elle contient plusieurs matières, sépare-les.
-           - Mots clés options : SPE, LVA, LVB, DNL, BFI, SC. LABO, CAV, PORTUGAIS, ESPAGNOL, ANGLAIS.
-        5. EMAIL : Cherche la colonne 'E-mail'. C'est la clé unique.
-
-        EXEMPLE D'ENTRÉE :
-        | Élève | Classe | Options |
-        | Dupont Jean | 2C | CAV, LVA ANGLAIS |
-
-        SORTIE ATTENDUE :
-        [
-          {
-            "firstName": "Jean",
-            "lastName": "DUPONT",
-            "email": "...", // Si trouvé
-            "className": "2C",
-            "options": ["CAV", "LVA ANGLAIS"]
-          }
-        ]
+        const system = `Tu es un expert en données scolaires.
         
-        RÉPOND UNIQUEMENT LE JSON.`;
+        MISSION :
+        Convertis le texte (CSV, Excel, Liste) en objets JSON.
+        
+        RÈGLES STRICTES :
+        1. SÉPARATEUR : Sépare chaque objet JSON par "||||"
+        2. FORMAT : {objet}||||{objet}
+        3. CONTENU : "firstName", "lastName", "email", "className", "options" (Array de strings), "password".
+        
+        INTELLIGENCE :
+        - Détecte les Noms (MAJUSCULES) et Prénoms (Capitalisés).
+        - "className" est la classe principale (ex: 6A, 5ème B). Si introuvable, utilise "${contextClass}".
+        - "options" : Tout ce qui ressemble à un groupe, une langue ou une option (ex: "LVA Anglais", "Latin", "Groupe 1").
+        - Email : Si absent, ne rien mettre.
+        
+        EXEMPLE :
+        {"lastName":"DUPONT", "firstName":"Jean", "className":"6A", "options":["Latin", "Anglais Avancé"]}||||...
+        `;
 
-        const prompt = `ANALYSE CE TEXTE :\n\n${rawText.substring(0, 20000)}`;
+        const prompt = `TEXTE BRUT À TRAITER :\n\n${cleanedText}`;
 
         try {
-            const response = await AIEngine.ask(prompt, system);
-            const result = AIEngine.sanitizeJSON(response);
-            console.log(`🧠 [AI] ${result.length} élèves extraits.`);
-            return result;
+            let rawResponse = await AIEngine.ask(prompt, system);
+            
+            // 1. Nettoyage
+            let clean = rawResponse
+                .replace(/```json/g, "")
+                .replace(/```/g, "")
+                .trim();
+
+            // 2. Découpage
+            const parts = clean.split('||||');
+            
+            const validStudents = [];
+            
+            for (const part of parts) {
+                if (!part.trim()) continue;
+                try {
+                    const student = JSON.parse(part.trim());
+                    if (student.lastName || student.firstName) {
+                        if (!Array.isArray(student.options)) student.options = [];
+                        validStudents.push(student);
+                    }
+                } catch (e) {}
+            }
+
+            console.log(`🧠 [AI] Succès : ${validStudents.length} élèves extraits.`);
+            return validStudents;
+
         } catch (e) {
-            console.error("❌ AI Parsing Failed:", e.message);
-            // On renvoie un tableau vide pour ne pas crasher le serveur
+            console.error("❌ AI Parsing Global Crash:", e.message);
             return [];
         }
     }
@@ -2373,8 +2479,9 @@ const mongoose = require('mongoose');
 const DriveEngine = require('../../../core/drive.engine');
 
 /**
- * 🧠 EXPERT ADMIN - VERSION 82 (CLEANED)
+ * 🧠 EXPERT ADMIN - VERSION 83 (DYNAMIC DUMP)
  * Fonctions de maintenance et diagnostic système.
+ * MODIFICATION : Scan dynamique de toutes les collections.
  */
 const AdminExpert = {
     // Vérification de la connexion Google Drive
@@ -2386,22 +2493,28 @@ const AdminExpert = {
         }
     },
 
-    // Dump complet de la BDD pour le mouchard
+    // Dump complet de la BDD pour le visualiseur
+    // Utilise mongoose.modelNames() pour ne rien oublier (AccessLog, Bugs, etc.)
     getFullDump: async () => {
-        const models = [
-            'AcademicYear', 'Admin', 'Classroom', 'Subject', 
-            'Teacher', 'Student', 'Enrollment', 'Chapter', 
-            'Homework', 'Submission', 'StudioProject'
-        ];
         const dump = {};
-        for (const m of models) {
+        const modelNames = mongoose.modelNames(); // Récupère tous les modèles enregistrés
+        
+        console.log(`📊 [DB DUMP] Extraction de ${modelNames.length} tables : ${modelNames.join(', ')}`);
+
+        for (const name of modelNames) {
             try {
-                if (mongoose.models[m]) {
-                    const collectionName = mongoose.models[m].collection.name;
-                    dump[collectionName] = await mongoose.model(m).find({}).limit(500).lean();
-                }
-            } catch (e) { console.error(`Dump fail for ${m}`); }
+                const Model = mongoose.model(name);
+                const collectionName = Model.collection.name; // Nom réel de la collection (ex: 'students')
+                
+                // On limite à 500 entrées par table pour ne pas saturer le navigateur
+                // Tri par _id décroissant pour voir les événements récents en premier
+                dump[collectionName] = await Model.find({}).limit(500).sort({ _id: -1 }).lean();
+            } catch (e) { 
+                console.error(`❌ Dump fail for ${name}:`, e.message);
+                dump[`ERROR_${name}`] = [{ error: "Lecture impossible", details: e.message }];
+            }
         }
+        
         return dump;
     }
 };
@@ -2747,9 +2860,10 @@ module.exports = mongoose.models.ProjectDoc || mongoose.model('ProjectDoc', Proj
 [[[£ FILE: server/models/Student.js £]]]
 const mongoose = require('mongoose');
 
-// Schéma pour les croix/bonus
+// Schéma pour les croix/bonus (Gamification)
 const BehaviorRecordSchema = new mongoose.Schema({
     teacherId: { type: String, required: true },
+    subjectId: { type: String },
     crosses: { type: Number, default: 0 },
     bonuses: { type: Number, default: 0 },
     lastCrossDate: { type: Date, default: null },
@@ -2759,14 +2873,20 @@ const BehaviorRecordSchema = new mongoose.Schema({
 // Schéma pour les notes prof
 const NoteSchema = new mongoose.Schema({
     teacherId: { type: String, required: true },
-    text: { type: String, default: "" }
+    text: { type: String, default: "" },
+    isPositive: { type: Boolean, default: false }
 }, { _id: false });
 
 const StudentSchema = new mongoose.Schema({
     // Identité
-    firstName: { type: String, required: true },
-    lastName: { type: String, required: true },
-    fullName: { type: String }, 
+    firstName: { type: String, required: true, trim: true },
+    lastName: { type: String, required: true, uppercase: true, trim: true },
+    
+    // --- NOUVEAUX CHAMPS ---
+    gender: { type: String, enum: ['M', 'F'], default: 'M' },
+    birthDate: { type: String, default: "" }, // Format texte DD/MM/YYYY pour éviter les problèmes de Timezone
+    
+    password: { type: String, default: "123456" },
     
     // Contacts
     email: { type: String, lowercase: true, trim: true },
@@ -2774,11 +2894,11 @@ const StudentSchema = new mongoose.Schema({
 
     // Scolarité
     classId: { type: mongoose.Schema.Types.ObjectId, ref: 'Classroom' },
-    currentClass: { type: String }, 
-    currentLevel: { type: String }, 
+    currentClass: { type: String },
+    currentLevel: { type: String },
     assignedGroups: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Classroom' }],
 
-    // Plan de classe (Coordonnées)
+    // Plan de classe
     seatX: { type: Number, default: 0 }, 
     seatY: { type: Number, default: 0 }, 
     
@@ -2786,15 +2906,44 @@ const StudentSchema = new mongoose.Schema({
     behaviorRecords: { type: [BehaviorRecordSchema], default: [] },
     teacherNotes: { type: [NoteSchema], default: [] },
 
-    // --- SYSTÈME PUNITIONS V3 ---
-    punishmentStatus: { type: String, enum: ['NONE', 'PENDING', 'LATE'], default: 'NONE' },
-    punishmentDueDate: { type: Date }, // Date limite pour rendre la punition
-    totalPunishments: { type: Number, default: 0 }, // Historique compteur
+    // Système Automatique
+    punishmentStatus: { type: String, enum: ['NONE', 'PENDING', 'LATE', 'DONE'], default: 'NONE' },
+    punishmentDueDate: { type: Date }, 
+    activePunishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Homework' },
+    hasReward: { type: Boolean, default: false },
 
     // Système
     isTestAccount: { type: Boolean, default: false },
     lastLogin: { type: Date, default: Date.now }
 }, { collection: 'students' });
+
+// --- MÉTHODES MÉTIER (ASYNC pour appels BDD) ---
+StudentSchema.methods.addCross = async function(teacherId) {
+    let record = this.behaviorRecords.find(r => r.teacherId === teacherId);
+    if (!record) { record = { teacherId, crosses: 0, bonuses: 0 }; this.behaviorRecords.push(record); }
+    record.crosses += 1;
+    record.lastCrossDate = new Date();
+    if (record.crosses >= 3) {
+        this.punishmentStatus = 'PENDING';
+        this.punishmentDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        try {
+            if (mongoose.models['Homework']) {
+                const Homework = mongoose.model('Homework');
+                const punishment = await Homework.findOne({ isPunishment: true, $or: [{ level: this.currentLevel }, { level: 'GLOBAL' }] }).sort({ createdAt: -1 });
+                if (punishment) this.activePunishmentId = punishment._id;
+            }
+        } catch (e) {}
+    }
+    return this.save();
+};
+
+StudentSchema.methods.addBonus = async function(teacherId) {
+    let record = this.behaviorRecords.find(r => r.teacherId === teacherId);
+    if (!record) { record = { teacherId, crosses: 0, bonuses: 0 }; this.behaviorRecords.push(record); }
+    record.bonuses += 1;
+    if (record.bonuses >= 4) this.hasReward = true;
+    return this.save();
+};
 
 module.exports = mongoose.models.Student || mongoose.model('Student', StudentSchema);
 [[[£ END: server/models/Student.js £]]]
@@ -3005,83 +3154,14 @@ Liste des fonctionalités du site a ne surtout pas casser et a faire progresser
 🛡️ 1. ESPACE ADMIN (Le Cœur du Système)
 C'est la base de données et la structure de l'établissement.
 Fonctionnalités Sanctuarisées (À ne pas casser) :
-Importation Massive : Je peux importer des listes d'élèves via copier-coller (texte tableau) ou fichier CSV. L'IA doit parser les colonnes (Nom, Prénom, Classe, Options, Email) automatiquement.
-Gestion Utilisateurs :
-Créer/Modifier/Supprimer un Admin.
-Créer/Modifier/Supprimer un Professeur : Lui assigner ses Matières et ses Classes et ses Groupes (ex: 2A, 1D BFI).
-Créer/Modifier/Supprimer un Élève : Définir son Nom, Prénom, Email, Email Parents, Classe principale et ses Groupes (Options).
-Gestion Structurelle : Créer les Classes (ex: 6A) et les Groupes (ex: 3C LVA Anglais).
-À Faire Progresser :
-Nettoyage BDD : Pouvoir archiver une année scolaire ou nettoyer les élèves sans classe d'un clic.
-Santé Système : Un tableau de bord technique pour voir si le Drive est connecté et si l'API IA répond.
-🎓 2. ESPACE PROFESSEUR (L'Outil Quotidien)
-Divisé en Gestion de Classe, Création (Studio) et Correction.
-A. Gestion de Classe & Vie Scolaire
-Fonctionnalités Sanctuarisées :
-Trombinoscope/Plan de classe : Je peux voir mes élèves sous forme de grille ou de liste.
-Comportement (Gamification) :
-Mettre une Croix (Sanction). Au bout de 3 croix -> Punition automatique (Statut PENDING): 
-!!!  A AJOUTER:COMPLETER : un devoir défini comme punition pour ce niveau est automatiquement attribué à l'élève si une punition existe pour ce niveau
-!!!  A AJOUTER:COMPLETER : Mettre un Bonus (Récompense). SI 4 BONUS AFFICHER RÉCOMPENSE A+ POUR L ÉLÈVE ET AUSSI COTÉ PROF (CET ÉLÈVE A EU UN A+)
-Voir la barre de "Rachat" (temps restant avant annulation d'une croix).
-Déplacement : Je peux déplacer les élèves sur le plan de classe par glisser-déposer.
-VOIR LES DEVOIRS/JEUX LA PARTIE DROIT DES DIV ÉLÈVE C EST DES PETITS POINTS DE COULEURS QUI CORRESPONDENT AUX DEVOIRS DONNES PAR CE PROF PASTILLE BLANCHE LE DEVOIR/JEU N EST PAS INITIÉ JAMAIS L ÉLÈVE N A CLIQUE DESSUS PASTILLE JAUNE L ÉLÈVE A OUVERT LE DEVOIR JEU ET NE L A PAS FINI (JEU NON GAGNE OU ENVOIE DU DEVOIR NON VALIDÉ PAR L IA)
-B. Studio de Création (Activités)
-Fonctionnalités Sanctuarisées :
-Création de Devoirs (Homework) :
-Définir un Titre, une Consigne textuelle, UNE CONSIGNE POUR L IA (GRILLE/INDICATIONS DE CORRECTIONS)
-Uploader des fichiers (Sujet, Pièces jointes).
-Ciblage : Assigner à une Classe entière (ex: 2A) OU à un Groupe (ex: 1D BFI).
-!!!MULTIPAGE JE PEU AJOUTER UNE NOUVELLE PAGE DE DEVOIR AVEC D AUTRES DOCUMENTS ET  D AUTRES CONSIGNES ELEVES (TAPPES EN TXT OU IMPORTE UNE IMAGE DE QUESTIONS) ET D AUTRES CONSIGNES DE CORRECTION IA POUR CETTE PAGE
-BOUTON PUNITION: DÉCLARER LE DEVOIR COMME PUNITION (IL SERA ATTRIBUE AUTOMATIQUEMENT AUX ELEVES QUI ONT 3 CROIX DE CE NIVEAU)
-Dossier : Ranger le devoir dans un Chapitre/Dossier (ex: "Géométrie").PAR DEFAUT IL SERA RANGE DANS UN DOSSIER COURRANT (NON STOCKE DANS LES ARCHIVES) AU HAZAR
-Création de Jeux (Quiz) :
-Générer des questions via IA (je peu choisir le nombre de questions generees).
-Éditer manuellement les questions/réponses.
-Publier pour une classe/groupe spécifique.
-!!!SI JE SUIS ELEVE D UNE OPTION ET QUE LE JEU A ÉTÉ CRÉÉ POUR CETTE OPTION OU GROUPE JE VOIS LE JEU PROPOSÉE SUR MON COMPTE ÉLÈVE
-À Faire Progresser :
-Mode Punition : Créer un devoir spécial "Punition" qui ne s'assigne qu'aux élèves ayant 3 croix (déjà en place, à fiabiliser).
-Sections Personnalisées : Créer des sections (ex: "TP", "Cours") pour organiser les chapitres, sans pouvoir supprimer la section "GÉNÉRAL" par erreur.
-C. Scan & Correction (Le Workflow)
-JE CRÉE UN NOUVEAU DC (DEVOIR EN CLASSE) UN DIV APPARAIT SUR DEUX LIGNES LIGNE 1 NOM DU DEVOIR DOSSIER DE RANGEMENT (PAR DÉFAUT UN DOSSIER COURRANT EST SELECTIONNÉ)
-LIGNE 2: UN BOUTON INSTRUCTION (PERMET DE SCANNER INSTRUCTIONS PHOTOS DES QUESTIONS A ENVOYER A L IA), UN BOUTON SCAN (PERMET DE SCANNER LES COPIES) UN BOUTON DEVOIR (OUVRE UN DIV AVEC TOUS LES DEVOIRS SCANNÉS ET ENVOYÉS EN BDD ET DANS LE DRIVE) UN BOUTON CORRECTION (AVEC UN DIV OU JE DONNE LES INSTRUCTIONS DE CORRECTION POUR L IA ET EN DESSOUS LES CORRECTIONS DE L IA APPARAISSENT)
-INSTRUCTIONS DE CORRETION DE BASE POUR LES SCANES:
--IDENTIFIER L L ÉLÈVE GRACE AU NOM SUR LA COPIE ET LA CLASSE COURRANTE SÉLECITONNÉE
--METTRE EN HAUT UNE APPRÉCIATION GLOBALE SUR LE TRAVAIL
--METTRE UNE LETTRE (A+ TRES BON DEVOIR A DEVOIR CORRECT OU BON L ESSENTIEL DE CE QUI ÉTAIT ATTENDU EST LA B COMPÉTENCES EN COURS D ACQUISITION CERTAINS ÉLÉMENTS ATTENDU SONT PRÉSENTS MAIS PAS LA MAJORITÉ OU C TRAVAIL INSUFFISANT TRÈS PEU D ÉLÉMENTS ATTENDUS SONT PRÉSENTS ON VOI UN MANQUE DE SÉRIEUX DANS LE TRAVAIL )
-Fonctionnalités Sanctuarisées :
-Scan Studio :
-Prendre en photo des copies via la Webcam ou le Téléphone (Interface WYSIWYG).
-Prendre en photo le Sujet de référence.
-IA Correcteur :
-Lancer l'IA sur un lot de copies scannées.
 
-Rangement Drive : Envoyer les scans et corrections vers le dossier Google Drive ET STOCKER LES ID DU SUJET POUR LA CLASSE DE LA COPIE ET SA CORRECTION POUR L ÉLÈVE
-LE PROF PEUT VOIR L ENSEMBLE DANS SON ONGLET ÉLÈVES SUR ORDI UNIQUEMENT OU SOUS FORME DE PASTILLE DE COULEUR DANS L ONGLET CLASSE 
-🎒 3. ESPACE ÉLÈVE (L'Expérience Utilisateur)
-Simplifié pour une lecture immédiate.
-Fonctionnalités Sanctuarisées :
-Dashboard Matières : Je vois mes devoirs regroupés par Matière (ex: "Maths", "Histoire") et non par dossier technique.
-Statut Devoir : Je vois clairement ce qui est "À FAIRE" (Rouge), "EN COURS" (Bleu) ou "FAIT" (Vert).
-Réalisation Devoir :
-Je peux lire la consigne et voir les documents.
-Je peux répondre par texte.
-Je reçois un feedback immédiat (Note/Conseil) si l'IA est active sur le devoir.
-SI JE RECOIS ROUGE C INSUFFISANT DANS CE CAS MA RÉPONS EST EFFACÉE ET JE DOIS LA REFAIRE SI JE RECOIS JAUNE B ALORS L IA ME DONNE QUELQUES INDICES ET JE PEU COMPLÉTER MA RÉPONSE SI JE RECOIS VERT A ALORS MA RÉPONSE EST VALIDÉE LE DEVOIR EST CONSIDÉRÉ COMME FAIT SI JE RECOIS VERT FONCÉ A+ UN MESSAGE DE FÉLICIATION M EST ENVOYÉ POUR LA QUALITÉ DE MON TRAVAIL
-Jeux de Révision :
-Je peux lancer un jeu (Zombie/Starship) associé à mon niveau.
-Mon score est enregistré.
-Carnet de Bord :
-Je vois mes Croix (Sanctions) et mes Bonus PAR MATIÈRE.
-Je vois si j'ai une Punition à rendre (Alerte Rouge).
-Je vois mon "Carnet d'Erreurs" (fautes d'orthographe récurrentes relevées par l'IA).
-🧠 4. MOTEUR & INTELLIGENCE (Invisible mais Vital)
-Fonctionnalités Sanctuarisées :
-Auth Hybride : Connexion via mot de passe simple (Prof/Admin) ou sélection visuelle (Élèves "Magic Finder").
-Google Drive Proxy : Les images stockées sur le Drive privé du prof sont visibles sur le site via un "Proxy" (le serveur fait le pont) pour éviter les images brisées.
-Sécurité des Données : Un élève ne voit jamais les données d'un autre élève (notes, croix).
-Intégrité Structurelle : Chaque utilisateur (Prof) a sa propre arborescence de dossiers qui se crée automatiquement si elle n'existe pas.
+Gestion Utilisateurs admin uniquement.
+Créer/Modifier/visualiser/Supprimer un Admin (Nom, Prénom, Email,Password ).
+Créer/Modifier/visualiser/Supprimer une classe (ex: 6A) . Dans une classe voir la liste des élèves.
+Créer/Modifier/visualiser/Supprimer un groupe (ex: 3C LVA Anglais).Dans un groupe voir la liste des élèves.
+Créer/Modifier/visualiser/Supprimer un Professeur : Lui assigner ses Matières et ses Classes et ses Groupes (ex: 2A, 1D BFI).l'ensemble Prénom + Nom doit être une clé unique.
+Créer/Modifier/Visualiser/Supprimer un Élève : Définir son Nomcomplet, Email, nom = première partie du mail, prénom = deuxième partie du mail,Email Parents, Classe principale et ses Groupes (Options). l'ensemble Prénom + Nom doit être une clé unique.
+Importation Massive : Je peux importer des listes d'élèves via copier-coller (texte tableau) ou fichier CSV. L'IA doit parser les colonnes (Nom à partir de la premère partie de l'Email, Prénom à partir de la deuxième partie de lEmail, nomcomplet, Classe, Options, Email) automatiquement.
 [[[£ END: systemInstructions.md £]]]
 
 [[[£ FILE: tests/integrity.test.js £]]]

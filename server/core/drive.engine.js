@@ -23,14 +23,17 @@ const DriveEngine = {
                 if (refresh) {
                     oauth2Client.setCredentials({ refresh_token: refresh });
                     driveInstance = google.drive({ version: 'v3', auth: oauth2Client });
-                    console.log("✅ Drive Engine Initialisé.");
+                    console.log("✅ Drive Engine : Configuration chargée.");
                 } else {
-                    console.warn("⚠️ Drive Engine : Pas de Refresh Token dans .env");
+                    console.warn("⚠️ Drive Engine : Pas de Refresh Token dans .env (Mode Déconnecté)");
                 }
             } else {
                 console.error("❌ Drive Engine : Client ID/Secret manquants.");
             }
-        } catch (e) { console.error("Drive Init Error", e.message); }
+        } catch (e) { 
+            console.error("❌ Drive Init Error (Non bloquant):", e.message); 
+            // On ne crash pas le serveur, le Drive sera juste indisponible
+        }
     },
 
     // --- MÉTHODES OAUTH (Pour regénérer le token) ---
@@ -56,8 +59,9 @@ const DriveEngine = {
             const res = await driveInstance.about.get({ fields: 'user(emailAddress)' });
             return { ok: true, email: res.data.user.emailAddress };
         } catch (e) { 
-            console.error("Test Auth Fail:", e.message);
-            return { ok: false, error: "Session expirée ou invalide. Regénérez le token." }; 
+            console.error("⚠️ Drive Auth Fail (Token expiré ?):", e.message);
+            // Si erreur invalid_grant, on retourne une erreur propre sans crasher
+            return { ok: false, error: "Session expirée (INVALID_GRANT). Regénérez le token." }; 
         }
     },
 
@@ -105,7 +109,6 @@ const DriveEngine = {
 
     getFileStream: async (fileId) => {
         try {
-            // On recrée une instance légère pour le stream si besoin, ou on utilise l'existante
             const drive = google.drive({ version: 'v3', auth: DriveEngine.oauth2Client });
             const res = await drive.files.get(
                 { fileId: fileId, alt: 'media' },

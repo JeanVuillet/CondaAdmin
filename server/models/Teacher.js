@@ -27,4 +27,7 @@ const TeacherSchema = new mongoose.Schema({
     isTestAccount: { type: Boolean, default: false }
 }, { collection: 'teachers' });
 
+// 🛡️ CONTRAINTE D'UNICITÉ : Le couple Prénom + Nom doit être unique
+TeacherSchema.index({ firstName: 1, lastName: 1 }, { unique: true });
+
 module.exports = mongoose.models.Teacher || mongoose.model('Teacher', TeacherSchema);
