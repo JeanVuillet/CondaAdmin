@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const AdminExpert = require('./experts/admin.expert'); 
-const AdminAI = require('./ai/admin.ai'); // Import de l'IA
+const AdminAI = require('./ai/admin.ai'); 
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -15,7 +15,6 @@ router.get('/teachers', asyncHandler(async (req, res) => res.json(await mongoose
 router.get('/admins', asyncHandler(async (req, res) => res.json(await mongoose.model('Admin').find({}).sort({ lastName: 1 }).lean())));
 
 // --- 🧠 ROUTE INTELLIGENCE ARTIFICIELLE ---
-// Permet de parser une liste d'élèves brute via Gemini
 router.post('/import/magic', asyncHandler(async (req, res) => {
     const { text, contextClass } = req.body;
     if (!text) return res.status(400).json({ error: "Aucun texte fourni" });
@@ -80,6 +79,16 @@ router.post('/:collection', asyncHandler(async (req, res) => {
     const Model = mongoose.model(modelMap[req.params.collection]);
     
     try {
+        // Validation basique des champs requis
+        if (req.params.collection === 'students') {
+            if (!req.body.firstName || !req.body.lastName) {
+                return res.status(400).json({ error: "Nom et Prénom requis." });
+            }
+            // Normalisation forcée pour l'unicité
+            req.body.firstName = req.body.firstName.trim();
+            req.body.lastName = req.body.lastName.trim().toUpperCase();
+        }
+
         const result = req.body._id 
             ? await Model.findByIdAndUpdate(req.body._id, req.body, { new: true }) 
             : await Model.create(req.body);
@@ -87,7 +96,7 @@ router.post('/:collection', asyncHandler(async (req, res) => {
     } catch (e) {
         // Gestion propre de l'erreur "Duplicate Key" (Code 11000)
         if (e.code === 11000) {
-            console.warn(`⚠️ Doublon détecté sur ${req.params.collection}`);
+            console.warn(`⚠️ Doublon détecté sur ${req.params.collection} (Key: ${JSON.stringify(e.keyValue)})`);
             return res.status(400).json({ error: "Doublon détecté", code: 11000 });
         }
         throw e;

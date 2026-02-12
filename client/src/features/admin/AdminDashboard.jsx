@@ -9,7 +9,7 @@ export default function AdminDashboard({ user }) {
     const [activeClassTab, setActiveClassTab] = useState('TOUS');
     
     // États des Modales
-    const [modalMode, setModalMode] = useState(null); // 'create', 'edit', 'view'
+    const [modalMode, setModalMode] = useState(null); 
     const [currentItem, setCurrentItem] = useState(null);
     const [viewingClass, setViewingClass] = useState(null);
     const [zoomedItem, setZoomedItem] = useState(null);
@@ -17,11 +17,9 @@ export default function AdminDashboard({ user }) {
     // États Magic Import & CSV
     const [importing, setImporting] = useState(false);
     const [showMagicModal, setShowMagicModal] = useState(false);
-    const [magicText, setMagicText] = useState("");
     const [magicLog, setMagicLog] = useState("");
     
     // Refs pour upload fichier
-    const fileInputRef = useRef(null);
     const classCsvInputRef = useRef(null); 
     const [targetImportClass, setTargetImportClass] = useState(null); 
 
@@ -49,7 +47,7 @@ export default function AdminDashboard({ user }) {
             ]);
             setAllClasses(rC || []);
             setAllSubjects(rS || []);
-            setAllStudents(rSt || []);
+            setAllStudents(rSt || []); 
 
             const r = await fetch(`/api/admin/${collectionMap[view]}`);
             if (r.ok) {
@@ -109,7 +107,7 @@ export default function AdminDashboard({ user }) {
     };
 
     const handleSave = async () => {
-        if (modalMode === 'view') return; // Sécurité
+        if (modalMode === 'view') return; 
 
         const targetCollection = collectionMap[view];
         let dataToSend = { ...currentItem };
@@ -117,41 +115,38 @@ export default function AdminDashboard({ user }) {
         if (view === 'teachers') {
             const subjects = Array.isArray(dataToSend.taughtSubjects) ? dataToSend.taughtSubjects : [];
             const classes = Array.isArray(dataToSend.assignedClasses) ? dataToSend.assignedClasses : [];
-
             dataToSend.taughtSubjects = subjects;
             dataToSend.assignedClasses = classes;
-            
-            dataToSend.taughtSubjectsText = allSubjects
-                .filter(s => subjects.includes(s._id))
-                .map(s => s.name)
-                .join(', ');
-                
-            dataToSend.assignedClassesText = allClasses
-                .filter(c => classes.includes(c._id))
-                .map(c => c.name)
-                .join(', ');
+            dataToSend.taughtSubjectsText = allSubjects.filter(s => subjects.includes(s._id)).map(s => s.name).join(', ');
+            dataToSend.assignedClassesText = allClasses.filter(c => classes.includes(c._id)).map(c => c.name).join(', ');
         }
 
         if (view === 'students') {
              dataToSend.assignedGroups = Array.isArray(dataToSend.assignedGroups) ? dataToSend.assignedGroups : [];
              const mainClass = allClasses.find(c => c._id === dataToSend.classId);
              dataToSend.currentClass = mainClass ? mainClass.name : "SANS CLASSE";
-             
-             // Validation Unicité Simple (Nom/Prénom requis)
              if (!dataToSend.firstName || !dataToSend.lastName) return alert("Nom et Prénom obligatoires !");
              
-             // Si fullName vide, on le génère par défaut
-             if (!dataToSend.fullName) {
-                 dataToSend.fullName = `${dataToSend.lastName} ${dataToSend.firstName}`;
+             // Assurance Nom Complet
+             if (!dataToSend.fullName) dataToSend.fullName = `${dataToSend.lastName} ${dataToSend.firstName}`;
+             
+             // Assurance Password par défaut (Auto-génération si vide)
+             if (!dataToSend.password) {
+                 if(dataToSend.birthDate) {
+                     // Tentative format JJMMAAAA sur saisie manuelle
+                     const parts = dataToSend.birthDate.split(/[\/\-\.]/);
+                     if (parts.length === 3) {
+                         dataToSend.password = parts[0].padStart(2,'0') + parts[1].padStart(2,'0') + parts[2];
+                     } else {
+                         dataToSend.password = dataToSend.birthDate.replace(/[^0-9]/g, '');
+                     }
+                 } else {
+                    dataToSend.password = "123456";
+                 }
              }
-
-             // Sécurité Mot de Passe
-             if (!dataToSend.password) dataToSend.password = "123456";
         }
 
-        if (view === 'groups') {
-            dataToSend.type = 'GROUP'; 
-        }
+        if (view === 'groups') dataToSend.type = 'GROUP'; 
 
         try {
             const res = await fetch(`/api/admin/${targetCollection}`, { 
@@ -162,17 +157,15 @@ export default function AdminDashboard({ user }) {
             const result = await res.json();
             
             if (result.error || result.code === 11000) {
-                alert("❌ ERREUR : Cet élément existe déjà (Nom ou Email en doublon).");
+                alert("❌ ERREUR : Cet élément existe déjà (Doublon Prénom+Nom ou Email).");
             } else {
                 setModalMode(null); loadData();
             }
-        } catch (e) {
-            alert("Erreur réseau");
-        }
+        } catch (e) { alert("Erreur réseau"); }
     };
 
     const toggleRelation = (field, id) => {
-        if (modalMode === 'view') return; // Bloquer en mode vue
+        if (modalMode === 'view') return;
         if (!currentItem) return;
         const currentList = Array.isArray(currentItem[field]) ? [...currentItem[field]] : [];
         if (currentList.includes(id)) {
@@ -182,38 +175,51 @@ export default function AdminDashboard({ user }) {
         }
     };
 
-    // --- HELPER EMAIL PARSER ---
+    const normalizeHeader = (str) => {
+        return str ? str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
+    };
+
     const parseEmailToIdentity = (email) => {
         if (!email || !email.includes('@')) return null;
         try {
             const local = email.split('@')[0];
-            const parts = local.split(/[._]/); // Split sur point ou underscore
-            
-            let nom = parts[0].toUpperCase();
+            const parts = local.split(/[.]/); 
+            // RÈGLE : Partie 1 = Nom, Partie 2 = Prénom
+            let nom = parts[0] ? parts[0].toUpperCase() : "INCONNU";
             let prenom = parts.length > 1 ? parts[1] : "";
-            
-            // Capitalize Prénom
             if (prenom) prenom = prenom.charAt(0).toUpperCase() + prenom.slice(1).toLowerCase();
-            
             return { lastName: nom, firstName: prenom };
         } catch (e) { return null; }
     };
 
-    // --- 📥 IMPORT CSV (MANUEL) ---
+    // --- 📥 IMPORT CSV STRICT (RÈGLES ETABLISSEMENT) ---
     const triggerClassImport = (classId) => {
         setTargetImportClass(classId);
-        if (classCsvInputRef.current) classCsvInputRef.current.click();
+        setTimeout(() => {
+            if (classCsvInputRef.current) classCsvInputRef.current.click();
+        }, 50);
     };
 
     const handleClassFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file || !targetImportClass) return;
 
+        // 1. VERIF NOM FICHIER (Stricte "Classe.csv" ou "Classe.xlsx")
+        const classObj = allClasses.find(c => c._id === targetImportClass);
+        const targetClassName = classObj ? classObj.name.toUpperCase().trim() : "SANS CLASSE";
+        
+        if (!file.name.toUpperCase().includes(targetClassName)) {
+            alert(`⛔ FICHIER REJETÉ.\n\nRègle : Le fichier doit contenir "${targetClassName}" dans son nom.\nFichier actuel : ${file.name}`);
+            e.target.value = ""; 
+            return;
+        }
+
         setImporting(true);
         setShowMagicModal(true); 
-        setMagicLog(`📂 Lecture : ${file.name}...\n`);
+        setMagicLog(`📂 Lecture fichier : ${file.name}...\n`);
 
         const reader = new FileReader();
+        
         reader.onload = async (evt) => {
             try {
                 const text = evt.target.result;
@@ -221,219 +227,179 @@ export default function AdminDashboard({ user }) {
                 if (lines.length < 1) throw new Error("Fichier vide.");
 
                 const headerLineIndex = 0; 
-                const headerLine = lines[headerLineIndex];
-                const separator = headerLine.includes(';') ? ';' : ',';
-                const headers = headerLine.split(separator).map(h => h.trim().toLowerCase());
+                const headerLineRaw = lines[headerLineIndex];
 
-                setMagicLog(`📋 Détection Colonnes : ${headers.join(' | ')}\n`);
+                // 2. DÉTECTION AUTO SÉPARATEUR
+                const countSemi = (headerLineRaw.match(/;/g) || []).length;
+                const countComma = (headerLineRaw.match(/,/g) || []).length;
+                const separator = countSemi >= countComma ? ';' : ',';
+                
+                setMagicLog(`⚙️ Séparateur : "${separator}"`);
 
+                const headers = headerLineRaw.split(separator).map(h => normalizeHeader(h));
+                setMagicLog(`📋 Colonnes trouvées : ${headers.join(' | ')}\n`);
+
+                // 3. MAPPING STRICT SELON LES RÈGLES
                 const map = {
-                    email: headers.findIndex(h => h.includes('mail') || h.includes('courriel')),
-                    lastName: headers.findIndex(h => h.includes('nom') || h.includes('last')),
-                    firstName: headers.findIndex(h => h.includes('prénom') || h.includes('prenom') || h.includes('first')),
-                    fullName: headers.findIndex(h => h.includes('full') || h.includes('complet') || h.includes('nom complet')),
-                    // ✅ DÉTECTION COLONNE DATE
-                    birthDate: headers.findIndex(h => h.includes('date') || h.includes('naissance') || h.includes('birth')),
-                    // ✅ DÉTECTION COLONNE SEXE
-                    gender: headers.findIndex(h => h.includes('sex') || h.includes('genre') || h.includes('civil')),
+                    email: headers.findIndex(h => h.includes('email') || h.includes('mail')),
+                    fullname: headers.findIndex(h => h.includes('eleve') || h.includes('nom complet')),
+                    sex: headers.findIndex(h => h.includes('sexe') || h.includes('genre')),
+                    // 📅 DÉTECTION COLONNE "Né(e) le" (Souvent C)
+                    birthDate: headers.findIndex(h => h.includes('ne(e) le') || h.includes('ne le') || h.includes('naissance')),
+                    
+                    // Mapping Options (M, N, O, P)
+                    opt1: headers.findIndex(h => h.includes('option 1') || h.includes('groupe 1')),
+                    opt2: headers.findIndex(h => h.includes('option 2') || h.includes('groupe 2')),
+                    opt3: headers.findIndex(h => h.includes('option 3') || h.includes('groupe 3')),
+                    opt4: headers.findIndex(h => h.includes('option 4') || h.includes('groupe 4') || h.includes('autre'))
                 };
 
-                const classObj = allClasses.find(c => c._id === targetImportClass);
-                const targetClassName = classObj ? classObj.name.toUpperCase().trim() : "SANS CLASSE";
+                // Fallback Indices (M=12, N=13, O=14, P=15) si headers introuvables mais colonnes suffisantes
+                if (map.opt1 === -1 && headers.length > 12) map.opt1 = 12;
+                if (map.opt2 === -1 && headers.length > 13) map.opt2 = 13;
+                if (map.opt3 === -1 && headers.length > 14) map.opt3 = 14;
+                if (map.opt4 === -1 && headers.length > 15) map.opt4 = 15;
 
-                setMagicLog(`🎯 Cible : ${targetClassName}`);
+                if (map.email === -1) throw new Error("Colonne 'Email' introuvable (Requise).");
 
+                setMagicLog(`🎯 Classe Cible : ${targetClassName}`);
+                
                 let successCount = 0;
+                let updateCount = 0;
                 let errorCount = 0;
                 
                 for (let i = headerLineIndex + 1; i < lines.length; i++) {
                     const lineStr = lines[i];
-                    const cols = lineStr.split(separator).map(c => c.trim());
+                    if (!lineStr || lineStr.trim() === "") continue;
 
-                    let email = map.email !== -1 ? cols[map.email].toLowerCase() : "";
-                    let lastName = map.lastName !== -1 ? cols[map.lastName].toUpperCase() : "INCONNU";
-                    let firstName = map.firstName !== -1 ? cols[map.firstName] : "Élève";
-                    let fullName = map.fullName !== -1 ? cols[map.fullName] : "";
-                    
-                    // ✅ 1. Date de Naissance & Mot de Passe
-                    let birthDate = map.birthDate !== -1 ? cols[map.birthDate] : "";
-                    let password = "123456"; // Défaut
-                    
-                    if (birthDate && birthDate.length > 5) {
-                        // On garde uniquement les chiffres pour le MDP (JJ/MM/AAAA -> JJMMAAAA)
-                        const cleanedPass = birthDate.replace(/[^0-9]/g, '');
-                        if (cleanedPass.length >= 6) password = cleanedPass;
-                    }
+                    const cols = lineStr.split(separator).map(c => c.trim().replace(/"/g, ''));
 
-                    // ✅ 2. Options : Colonne P (Index 15) uniquement
-                    let assignedGroups = [];
-                    if (cols[15] && cols[15].trim() !== "") {
-                        const rawGroups = cols[15].split(',');
-                        rawGroups.forEach(gPart => {
-                            const cleanPart = gPart.trim();
-                            if (cleanPart) {
-                                // Construction du nom strict : CLASSE + " " + NOM_GROUPE_CSV
-                                const targetGroupName = `${targetClassName} ${cleanPart}`.toUpperCase();
-                                
-                                const grp = allClasses.find(c => c.type === 'GROUP' && c.name.toUpperCase() === targetGroupName);
-                                if (grp) {
-                                    assignedGroups.push(grp._id);
-                                } else {
-                                    setMagicLog(`❓ Groupe inconnu : ${targetGroupName} (Cherché dans Col P)`);
-                                }
-                            }
-                        });
-                    }
+                    // --- A. PARSING IDENTITÉ ---
+                    let email = cols[map.email] ? cols[map.email].toLowerCase() : "";
+                    if (!email || !email.includes('@')) continue; 
 
-                    // ✅ 3. Sexe : Première lettre de la colonne Sexe
-                    let gender = 'M';
-                    if (map.gender !== -1 && cols[map.gender]) {
-                        const rawGender = cols[map.gender].trim().toUpperCase();
-                        if (rawGender.length > 0) {
-                            gender = rawGender.charAt(0); // M, F, H, etc.
-                        }
-                    }
-
-                    // 4. Logique Identité (FullName / Email)
-                    if (fullName && (lastName === "INCONNU" || !firstName)) {
-                        const parts = fullName.trim().split(/\s+/);
-                        if (parts.length > 1) {
-                            firstName = parts.pop();
-                            lastName = parts.join(' ').toUpperCase();
+                    // RÈGLE : LastName = partie 1 email, FirstName = partie 2
+                    let firstName = "Prénom";
+                    let lastName = "NOM";
+                    try {
+                        const localPart = email.split('@')[0];
+                        const nameParts = localPart.split('.');
+                        if (nameParts.length >= 2) {
+                            lastName = nameParts[0].toUpperCase();
+                            firstName = nameParts[1].charAt(0).toUpperCase() + nameParts[1].slice(1).toLowerCase();
                         } else {
-                            lastName = fullName.toUpperCase();
+                            lastName = localPart.toUpperCase();
+                            firstName = "";
+                        }
+                    } catch(e) {}
+
+                    // RÈGLE : Fullname de la colonne ou concat
+                    let fullName = (map.fullname !== -1 && cols[map.fullname]) ? cols[map.fullname] : `${lastName} ${firstName}`;
+
+                    // --- B. PARSING ATTRIBUTS ---
+                    // RÈGLE : Gender = 1ère lettre
+                    let gender = 'M';
+                    if (map.sex !== -1 && cols[map.sex]) {
+                        const firstChar = cols[map.sex].charAt(0).toUpperCase();
+                        if (firstChar === 'F' || firstChar === 'W') gender = 'F';
+                    }
+
+                    // 📅 RÈGLE : Password = BirthDate format JJMMAAAA
+                    let birthDate = (map.birthDate !== -1 && cols[map.birthDate]) ? cols[map.birthDate].trim() : "";
+                    let password = "123456"; 
+                    
+                    if (birthDate) {
+                        // Tentative de formatage strict JJMMAAAA (01012000)
+                        const parts = birthDate.split(/[\/\-\.]/);
+                        if (parts.length === 3) {
+                            const d = parts[0].trim().padStart(2, '0');
+                            const m = parts[1].trim().padStart(2, '0');
+                            const y = parts[2].trim();
+                            password = `${d}${m}${y}`;
+                        } else {
+                            // Fallback si format non reconnu (juste les chiffres)
+                            const digits = birthDate.replace(/[^0-9]/g, '');
+                            if (digits.length >= 6) password = digits; 
                         }
                     }
 
-                    if (email.includes('@')) {
-                         const identity = parseEmailToIdentity(email);
-                         if (identity) {
-                             lastName = identity.lastName;
-                             firstName = identity.firstName;
-                         }
-                    }
+                    // --- C. PARSING GROUPES (Options M, N, O, P) ---
+                    // RÈGLE : "Classe + ' ' + Groupe" (ex: "1D ANGLAIS")
+                    let assignedGroups = [];
+                    const optionCols = [map.opt1, map.opt2, map.opt3, map.opt4].filter(idx => idx !== -1);
+                    
+                    optionCols.forEach(idx => {
+                        const val = cols[idx];
+                        if (val && val.length > 1) {
+                            // On gère si plusieurs groupes sont séparés par virgule (ex: "LATIN, CHORALE")
+                            const parts = val.split(/[,\/]/);
+                            parts.forEach(part => {
+                                const cleanOptionName = part.trim().toUpperCase();
+                                if (cleanOptionName) {
+                                    const constructedGroupName = `${targetClassName} ${cleanOptionName}`;
+                                    // Recherche ID du groupe existant
+                                    const grpObj = allClasses.find(c => c.type === 'GROUP' && c.name === constructedGroupName);
+                                    if (grpObj) {
+                                        assignedGroups.push(grpObj._id);
+                                    } else {
+                                        // Optionnel: On pourrait créer le groupe ici, mais par sécurité on log
+                                    }
+                                }
+                            });
+                        }
+                    });
 
-                    if (!fullName && lastName !== "INCONNU") {
-                        fullName = `${lastName} ${firstName}`;
-                    }
+                    // 🔎 RECHERCHE DOUBLON
+                    const existingStudent = allStudents.find(s => 
+                        s.email.toLowerCase() === email.toLowerCase() || 
+                        (s.lastName.toUpperCase() === lastName && s.firstName.toLowerCase() === firstName.toLowerCase())
+                    );
 
-                    if (lastName === "INCONNU" && !email) continue;
+                    let payload = {
+                        firstName, lastName, fullName, email, password, 
+                        classId: targetImportClass, 
+                        currentClass: targetClassName, 
+                        assignedGroups, gender, birthDate 
+                    };
+
+                    if (existingStudent) {
+                        payload._id = existingStudent._id; 
+                    }
 
                     try {
                         const res = await fetch('/api/admin/students', {
                             method: 'POST',
                             headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({
-                                firstName, 
-                                lastName,
-                                fullName,
-                                email: email, 
-                                password: password, 
-                                classId: targetImportClass, 
-                                currentClass: targetClassName, 
-                                assignedGroups: assignedGroups, 
-                                gender: gender, // ✅ Sexe importé
-                                birthDate: birthDate 
-                            })
+                            body: JSON.stringify(payload)
                         });
                         const data = await res.json();
+                        
                         if (data.error || data.code === 11000) {
-                            setMagicLog(`⚠️ Doublon ignoré : ${lastName} ${firstName}`);
                             errorCount++;
                         } else {
-                            successCount++;
+                            if (existingStudent) updateCount++; else successCount++;
                         }
                     } catch (err) { errorCount++; }
                     
-                    if(successCount % 5 === 0) setMagicLog(`... ${successCount} traités`);
+                    if((successCount + updateCount) % 10 === 0) setMagicLog(`... ${successCount + updateCount} traités`);
                 }
 
-                setMagicLog(`\n🎉 TERMINÉ : ${successCount} élèves importés.`);
-                if (errorCount > 0) setMagicLog(`⚠️ ${errorCount} erreurs/doublons.`);
+                setMagicLog(`\n🎉 TERMINÉ : ${successCount} créés, ${updateCount} mis à jour.`);
+                if (errorCount > 0) setMagicLog(`⚠️ ${errorCount} erreurs (Doublons/Invalides).`);
 
                 e.target.value = ""; 
                 setTimeout(() => {
-                    if (confirm(`Import terminé (${successCount} ajoutés). Recharger ?`)) {
+                    if (confirm(`Import terminé.\n\nCréés: ${successCount}\nMis à jour: ${updateCount}\n\nRecharger la liste ?`)) {
                         setShowMagicModal(false); setMagicLog(""); loadData();
                     }
                 }, 1000);
 
             } catch (err) {
-                setMagicLog(`❌ ERREUR : ${err.message}`);
+                setMagicLog(`❌ ERREUR FATALE : ${err.message}`);
                 e.target.value = ""; 
             }
         };
         reader.readAsText(file);
-    };
-
-    // --- MAGIC IMPORT IA ---
-    const handleMagicImport = async () => {
-        if (!magicText.trim()) return alert("Zone vide !");
-        setImporting(true);
-        setMagicLog("🧠 Analyse IA en cours...");
-        try {
-            const contextClassName = activeClassTab !== 'TOUS' ? allClasses.find(c => c._id === activeClassTab)?.name : "SANS CLASSE";
-            const res = await fetch('/api/admin/import/magic', {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ text: magicText, contextClass: contextClassName })
-            });
-            const parsedList = await res.json();
-            if (!Array.isArray(parsedList)) throw new Error("Réponse IA invalide.");
-            
-            setMagicLog(`✅ ${parsedList.length} élèves détectés.`);
-            
-            for (const student of parsedList) {
-                const targetClass = allClasses.find(c => c.type === 'CLASS' && c.name === student.className);
-                const classId = targetClass ? targetClass._id : null;
-                const currentClass = targetClass ? targetClass.name : (student.className || "SANS CLASSE");
-                
-                let assignedGroups = [];
-                if (student.options && Array.isArray(student.options)) {
-                    assignedGroups = student.options.map(optName => {
-                        const grp = allClasses.find(c => c.type === 'GROUP' && c.name === optName);
-                        return grp ? grp._id : null;
-                    }).filter(id => id !== null);
-                }
-
-                // Application de la règle email aussi ici si l'IA a raté
-                if (student.lastName === "INCONNU" && student.email) {
-                    const id = parseEmailToIdentity(student.email);
-                    if (id) {
-                        student.lastName = id.lastName;
-                        student.firstName = id.firstName;
-                    }
-                }
-
-                // Génération FullName
-                const fName = student.fullName || `${student.lastName} ${student.firstName}`;
-
-                const finalRes = await fetch('/api/admin/students', {
-                    method: 'POST', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({
-                        firstName: student.firstName || "Inconnu", 
-                        lastName: student.lastName || "INCONNU", 
-                        fullName: fName,
-                        email: student.email || "", 
-                        password: student.password || "123456",
-                        classId: classId, 
-                        currentClass: currentClass, 
-                        assignedGroups: assignedGroups,
-                        gender: 'M', 
-                        birthDate: '' 
-                    })
-                });
-                
-                const finalData = await finalRes.json();
-                if (finalData.code === 11000) {
-                     setMagicLog(`⚠️ Doublon : ${student.firstName} ${student.lastName}`);
-                } else {
-                     setMagicLog(`🔨 Création : ${student.firstName} ${student.lastName}`);
-                }
-            }
-            setMagicLog(`🎉 Import terminé.`);
-            setTimeout(() => { setShowMagicModal(false); setMagicText(""); setMagicLog(""); loadData(); }, 2000);
-        } catch (e) { setMagicLog("❌ ERREUR: " + e.message); }
-        setImporting(false);
     };
 
     const filteredItems = items.filter(it => {
@@ -449,7 +415,7 @@ export default function AdminDashboard({ user }) {
             {importing && <div className="zoom-overlay level-2">
                 <div className="text-white font-black text-2xl flex flex-col items-center gap-4">
                     <div className="animate-spin text-5xl">⚙️</div>
-                    <div className="animate-pulse whitespace-pre-line text-center">{magicLog || "TRAITEMENT..."}</div>
+                    <div className="animate-pulse whitespace-pre-line text-center">{magicLog || "TRAITEMENT EN COURS..."}</div>
                 </div>
             </div>}
             
@@ -461,7 +427,6 @@ export default function AdminDashboard({ user }) {
                 </div>
                 <div className="action-buttons">
                     <button onClick={handleOpenCreate} className="btn-pill btn-add">+ CRÉER</button>
-                    <button onClick={() => setShowMagicModal(true)} className="btn-pill btn-import">✨ MAGIC IMPORT</button>
                 </div>
             </div>
 
@@ -502,7 +467,7 @@ export default function AdminDashboard({ user }) {
                             {view === 'classes' && (
                                 <>
                                     <button onClick={() => triggerClassImport(it._id)} className="btn-import-mini">📥 IMPORT CSV</button>
-                                    <button onClick={() => handlePurgeClass(it)} className="btn-action bg-red-50 text-red-600 border border-red-100 hover:bg-red-600 hover:text-white" title="Supprimer tous les élèves">♻️ VIDER</button>
+                                    <button onClick={() => handlePurgeClass(it)} className="btn-action bg-red-50 text-red-600 border border-red-100 hover:bg-red-600 hover:text-white" title="Vider la classe">♻️ VIDER</button>
                                 </>
                             )}
                             
@@ -510,7 +475,6 @@ export default function AdminDashboard({ user }) {
                                 <button onClick={() => setZoomedItem(it)} className="btn-action bg-cyan-50 text-cyan-600 border border-cyan-100 hover:bg-cyan-500 hover:text-white">🔍</button>
                             )}
 
-                            {/* ✅ BOUTON VOIR AJOUTÉ */}
                             <button onClick={() => { setCurrentItem(it); setModalMode('view'); }} className="btn-action btn-view">👁️ VOIR</button>
                             <button onClick={() => { setCurrentItem(it); setModalMode('edit'); }} className="btn-action btn-modif">ÉDITER</button>
                             <button onClick={() => handleDelete(it._id)} className="btn-action btn-delete">✕</button>
@@ -519,7 +483,7 @@ export default function AdminDashboard({ user }) {
                 ))}
             </div>
 
-            {/* ... MODALES EXISTANTES (Zoom Item, View Class) ... */}
+            {/* ... MODALES (ZOOM, VIEW, EDIT) ... */}
             {zoomedItem && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setZoomedItem(null)}>
                     <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
@@ -562,55 +526,45 @@ export default function AdminDashboard({ user }) {
                             <button onClick={() => setViewingClass(null)} className="text-slate-400 hover:text-red-500 font-black">✕</button>
                         </div>
                         <div className="p-0 h-96 overflow-y-auto">
-                             {allStudents.filter(s => {
-                                 const isMainClass = String(s.classId) === String(viewingClass._id);
-                                 const isInGroup = (s.assignedGroups || []).includes(viewingClass._id);
-                                 return isMainClass || isInGroup;
-                             }).length === 0 
-                                ? <div className="p-10 text-center text-slate-300 font-bold uppercase">Aucun élève</div>
-                                : allStudents
-                                    .filter(s => String(s.classId) === String(viewingClass._id) || (s.assignedGroups || []).includes(viewingClass._id))
-                                    .sort((a,b) => a.lastName.localeCompare(b.lastName))
-                                    .map(s => (
-                                        <div key={s._id} className="p-4 border-b hover:bg-slate-50 flex justify-between items-center">
-                                            <div>
-                                                <div className="font-bold text-slate-700">{s.lastName} {s.firstName}</div>
-                                                <div className="text-[10px] text-slate-400 font-mono">{s.birthDate} • {s.gender}</div>
-                                            </div>
-                                            <span className="text-xs font-mono text-slate-400">{s.email}</span>
+                             {allStudents.filter(s => String(s.classId) === String(viewingClass._id) || (s.assignedGroups || []).includes(viewingClass._id))
+                                .sort((a,b) => a.lastName.localeCompare(b.lastName))
+                                .map(s => (
+                                    <div key={s._id} className="p-4 border-b hover:bg-slate-50 flex justify-between items-center">
+                                        <div>
+                                            <div className="font-bold text-slate-700">{s.lastName} {s.firstName}</div>
+                                            <div className="text-[10px] text-slate-400 font-mono">{s.birthDate} • {s.gender}</div>
                                         </div>
-                                    ))
+                                        <span className="text-xs font-mono text-slate-400">{s.email}</span>
+                                    </div>
+                                ))
                              }
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* --- MODALE GÉNÉRIQUE (CREATE / EDIT / VIEW) --- */}
             {modalMode && currentItem && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setModalMode(null)}>
                     <div className="bg-white w-full max-w-2xl rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         
-                        {/* ✅ TITRE ADAPTATIF */}
                         <h3 className="text-xl font-black uppercase mb-6 text-indigo-600">
                             {modalMode === 'create' ? 'Création' : modalMode === 'edit' ? 'Modification' : 'Consultation'} {view}
                         </h3>
                         
                         <div className="space-y-4 mb-8">
-                            
-                             {/* SAISIE RAPIDE PAR EMAIL (RÈGLE VUILLET.JEAN) - Caché en mode VIEW */}
-                             {(view === 'students' || view === 'teachers') && modalMode !== 'view' && (
-                                <div className="mb-6 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                                    <label className="form-label !text-indigo-600 !mt-0 mb-2">⚡ Saisie via Email (Déduit Nom/Prénom)</label>
+                             {(view === 'students' || view === 'teachers' || view === 'administrateurs') && (
+                                <div className={`mb-6 p-4 rounded-xl border ${modalMode !== 'view' ? 'bg-indigo-50 border-indigo-100' : 'bg-white border-slate-200'}`}>
+                                    <label className={`form-label !mt-0 mb-2 ${modalMode !== 'view' ? '!text-indigo-600' : ''}`}>
+                                        {modalMode !== 'view' ? '⚡ Saisie via Email (Déduit Nom/Prénom)' : 'Email'}
+                                    </label>
                                     <input 
-                                        className="w-full p-3 border-2 border-indigo-200 rounded-lg bg-white font-bold text-indigo-900 placeholder-indigo-200 focus:border-indigo-500 focus:outline-none" 
-                                        placeholder="ex: vuillet.jean@condamine.edu.ec" 
+                                        className={`w-full p-3 border-2 rounded-lg font-bold outline-none ${modalMode !== 'view' ? 'border-indigo-200 bg-white text-indigo-900 placeholder-indigo-200 focus:border-indigo-500' : 'border-slate-200 bg-slate-50 text-slate-500'}`}
+                                        placeholder="ex: nom.prenom@ecole.com" 
                                         value={currentItem.email || ''}
+                                        disabled={modalMode === 'view'}
                                         onChange={e => {
                                             const val = e.target.value;
                                             const newState = { ...currentItem, email: val };
-                                            
-                                            // Auto-remplissage si format correct
                                             const id = parseEmailToIdentity(val);
                                             if (id) {
                                                 newState.lastName = id.lastName;
@@ -619,22 +573,20 @@ export default function AdminDashboard({ user }) {
                                             setCurrentItem(newState);
                                         }}
                                     />
-                                    <div className="text-[10px] text-indigo-400 text-right mt-1 italic">Partie 1 = Nom, Partie 2 = Prénom</div>
+                                    {modalMode !== 'view' && <div className="text-[10px] text-indigo-400 text-right mt-1 italic">Format attendu : nom.prenom@...</div>}
                                 </div>
                              )}
 
-                             {/* CHAMP NOM COMPLET (INDÉPENDANT) */}
                              {view === 'students' && (
                                 <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                    <label className="form-label !mt-0 mb-2">Nom Complet (Format Libre)</label>
+                                    <label className="form-label !mt-0 mb-2">Nom Complet</label>
                                     <input 
                                         className="w-full p-3 border rounded-lg bg-white font-bold text-slate-700 disabled:opacity-60 disabled:bg-slate-100"
-                                        placeholder="ex: DE LA FONTAINE Jean" 
-                                        value={currentItem.fullName || ''}
+                                        placeholder="Généré automatiquement..." 
+                                        value={currentItem.fullName || `${currentItem.lastName || ''} ${currentItem.firstName || ''}`}
                                         disabled={modalMode === 'view'}
                                         onChange={e => setCurrentItem({ ...currentItem, fullName: e.target.value })}
                                     />
-                                    {modalMode !== 'view' && <div className="text-[10px] text-slate-400 text-right mt-1 italic">Ce champ est indépendant.</div>}
                                 </div>
                              )}
 
@@ -660,34 +612,47 @@ export default function AdminDashboard({ user }) {
                                     </div>
                                 )}
                              </div>
+                             
+                             {/* GESTION DES ADMINS */}
+                             {view === 'administrateurs' && (
+                                <div className="flex flex-col">
+                                    <label className="form-label">Mot de Passe</label>
+                                    <input 
+                                        className="w-full p-3 border rounded font-bold disabled:opacity-60" 
+                                        type="text"
+                                        value={currentItem.password || ''} 
+                                        disabled={modalMode === 'view'}
+                                        onChange={e => setCurrentItem({...currentItem, password: e.target.value})} 
+                                    />
+                                </div>
+                             )}
 
                              {view === 'teachers' && (
                                 <>
                                     <div>
-                                        <label className="form-label">Matières enseignées</label>
+                                        <label className="form-label">Matières</label>
                                         <div className="selection-grid">
                                             {allSubjects.map(sub => (
-                                                <div 
-                                                    key={sub._id} 
-                                                    onClick={() => toggleRelation('taughtSubjects', sub._id)}
-                                                    className={`toggle-chip ${currentItem.taughtSubjects.includes(sub._id) ? 'selected' : ''} ${modalMode === 'view' ? 'disabled' : ''}`}
-                                                >
-                                                    {sub.name}
-                                                </div>
+                                                <div key={sub._id} onClick={() => toggleRelation('taughtSubjects', sub._id)} className={`toggle-chip ${currentItem.taughtSubjects.includes(sub._id) ? 'selected' : ''} ${modalMode === 'view' ? 'disabled' : ''}`}>{sub.name}</div>
                                             ))}
                                         </div>
                                     </div>
+                                    
+                                    {/* SÉPARATION DES CLASSES ET DES GROUPES */}
                                     <div>
-                                        <label className="form-label">Classes & Groupes assignés</label>
+                                        <label className="form-label">Classes Principales</label>
                                         <div className="selection-grid">
-                                            {allClasses.map(cls => (
-                                                <div 
-                                                    key={cls._id} 
-                                                    onClick={() => toggleRelation('assignedClasses', cls._id)}
-                                                    className={`toggle-chip ${currentItem.assignedClasses.includes(cls._id) ? 'selected' : ''} ${modalMode === 'view' ? 'disabled' : ''}`}
-                                                >
-                                                    {cls.type === 'GROUP' ? '🛑' : '🟦'} {cls.name}
-                                                </div>
+                                            {allClasses.filter(c => c.type === 'CLASS').map(cls => (
+                                                <div key={cls._id} onClick={() => toggleRelation('assignedClasses', cls._id)} className={`toggle-chip ${currentItem.assignedClasses.includes(cls._id) ? 'selected' : ''} ${modalMode === 'view' ? 'disabled' : ''}`}>{cls.name}</div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-4">
+                                        <label className="form-label">Groupes / Options</label>
+                                        <div className="selection-grid">
+                                            {allClasses.filter(c => c.type === 'GROUP').map(grp => (
+                                                <div key={grp._id} onClick={() => toggleRelation('assignedClasses', grp._id)} className={`toggle-chip ${currentItem.assignedClasses.includes(grp._id) ? 'selected' : ''} ${modalMode === 'view' ? 'disabled' : ''}`}>{grp.name}</div>
                                             ))}
                                         </div>
                                     </div>
@@ -699,61 +664,44 @@ export default function AdminDashboard({ user }) {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="flex flex-col">
                                             <label className="form-label">Sexe</label>
-                                            <select 
-                                                className="w-full p-3 border rounded bg-white disabled:opacity-60 disabled:bg-slate-100" 
-                                                value={currentItem.gender || 'M'} 
-                                                disabled={modalMode === 'view'}
-                                                onChange={e => setCurrentItem({...currentItem, gender:e.target.value})}
-                                            >
+                                            <select className="w-full p-3 border rounded bg-white disabled:opacity-60" value={currentItem.gender || 'M'} disabled={modalMode === 'view'} onChange={e => setCurrentItem({...currentItem, gender:e.target.value})}>
                                                 <option value="M">Homme</option>
                                                 <option value="F">Femme</option>
                                             </select>
                                         </div>
                                         <div className="flex flex-col">
                                             <label className="form-label">Classe Principale</label>
-                                            <select 
-                                                className="w-full p-3 border rounded bg-white font-bold disabled:opacity-60 disabled:bg-slate-100" 
-                                                value={currentItem.classId || ''} 
-                                                disabled={modalMode === 'view'}
-                                                onChange={e => setCurrentItem({...currentItem, classId:e.target.value})}
-                                            >
+                                            <select className="w-full p-3 border rounded bg-white font-bold disabled:opacity-60" value={currentItem.classId || ''} disabled={modalMode === 'view'} onChange={e => setCurrentItem({...currentItem, classId:e.target.value})}>
                                                 <option value="">-- AUCUNE --</option>
                                                 {allClasses.filter(c => c.type === 'CLASS').map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
                                             </select>
                                         </div>
                                     </div>
 
-                                    {/* ✅ AJOUT DATE DE NAISSANCE + PASSWORD AUTO */}
                                     <div className="flex flex-col">
-                                        <label className="form-label">Date de Naissance (Format JJ/MM/AAAA)</label>
+                                        <label className="form-label">Date de Naissance (jj/mm/aaaa)</label>
                                         <input
-                                            className="w-full p-3 border rounded bg-white font-bold tracking-widest disabled:opacity-60 disabled:bg-slate-100"
+                                            className="w-full p-3 border rounded bg-white font-bold tracking-widest disabled:opacity-60"
                                             placeholder="ex: 04/11/2005"
                                             value={currentItem.birthDate || ''}
                                             disabled={modalMode === 'view'}
                                             onChange={e => {
                                                 const val = e.target.value;
-                                                const rawDate = val.replace(/[^0-9]/g, ''); // Garde chiffres pour le MDP
+                                                const rawDate = val.replace(/[^0-9]/g, ''); 
                                                 setCurrentItem({
                                                     ...currentItem,
                                                     birthDate: val,
-                                                    password: rawDate // Auto Password = JJMMAAAA
+                                                    password: rawDate // Auto-update password
                                                 });
                                             }}
                                         />
-                                        {modalMode !== 'view' && (
-                                            <div className="text-[10px] text-emerald-500 text-right mt-1 font-bold uppercase">
-                                                Mot de passe généré : {currentItem.password || '(En attente de date)'}
-                                            </div>
-                                        )}
                                     </div>
 
-                                    {/* FILTRE GROUPE STRICT PAR CLASSE */}
                                     <div>
                                         <label className="form-label">Options & Groupes</label>
                                         {!currentItem.classId ? (
                                             <div className="text-xs text-slate-400 italic pl-2 border-l-2 border-slate-200 py-2">
-                                                ⚠️ Sélectionnez d'abord une classe principale pour voir les groupes disponibles.
+                                                ⚠️ Sélectionnez d'abord une classe principale.
                                             </div>
                                         ) : (
                                             <div className="selection-grid">
@@ -763,56 +711,27 @@ export default function AdminDashboard({ user }) {
                                                         return c.type === 'GROUP' && c.name.startsWith(currentClassName);
                                                     })
                                                     .map(grp => (
-                                                    <div 
-                                                        key={grp._id} 
-                                                        onClick={() => toggleRelation('assignedGroups', grp._id)}
-                                                        className={`toggle-chip ${currentItem.assignedGroups?.includes(grp._id) ? 'selected' : ''} ${modalMode === 'view' ? 'disabled' : ''}`}
-                                                    >
-                                                        {grp.name}
-                                                    </div>
+                                                    <div key={grp._id} onClick={() => toggleRelation('assignedGroups', grp._id)} className={`toggle-chip ${currentItem.assignedGroups?.includes(grp._id) ? 'selected' : ''} ${modalMode === 'view' ? 'disabled' : ''}`}>{grp.name}</div>
                                                 ))}
-                                                {allClasses.filter(c => {
-                                                    const currentClassName = allClasses.find(cl => cl._id === currentItem.classId)?.name || "";
-                                                    return c.type === 'GROUP' && c.name.startsWith(currentClassName);
-                                                }).length === 0 && (
-                                                    <span className="text-xs text-slate-400 italic">Aucun groupe trouvé pour cette classe.</span>
-                                                )}
                                             </div>
                                         )}
                                     </div>
-
-                                    <div className="grid grid-cols-2 gap-4 mt-4">
-                                         <input 
-                                            className="w-full p-3 border rounded bg-slate-50 font-mono text-slate-400 disabled:opacity-60" 
-                                            placeholder="Mot de Passe" 
-                                            value={currentItem.password||''} 
-                                            disabled={modalMode === 'view'}
-                                            onChange={e=>setCurrentItem({...currentItem, password:e.target.value})} 
-                                        />
+                                    
+                                    <div className="mt-4">
+                                        <label className="form-label">Mot de Passe (Auto-généré)</label>
+                                        <input className="w-full p-3 border rounded bg-slate-50 font-mono text-slate-400 disabled:opacity-60" value={currentItem.password||''} disabled={modalMode === 'view'} onChange={e=>setCurrentItem({...currentItem, password:e.target.value})} />
                                     </div>
                                 </>
                              )}
 
                              {(view === 'classes' || view === 'groups') && (
                                  <div className="flex flex-col">
-                                     <label className="form-label">Type de structure</label>
+                                     <label className="form-label">Type</label>
                                      <div className="flex gap-4 mt-2">
-                                         <button disabled={modalMode === 'view'} onClick={() => setCurrentItem({...currentItem, type: 'CLASS'})} className={`flex-1 p-3 rounded-xl border-2 font-black ${currentItem.type === 'CLASS' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-400'} ${modalMode === 'view' ? 'opacity-60' : ''}`}>CLASSE (ex: 6A)</button>
-                                         <button disabled={modalMode === 'view'} onClick={() => setCurrentItem({...currentItem, type: 'GROUP'})} className={`flex-1 p-3 rounded-xl border-2 font-black ${currentItem.type === 'GROUP' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-400'} ${modalMode === 'view' ? 'opacity-60' : ''}`}>GROUPE (ex: 3B ANGLAIS)</button>
+                                         <button disabled={modalMode === 'view'} onClick={() => setCurrentItem({...currentItem, type: 'CLASS'})} className={`flex-1 p-3 rounded-xl border-2 font-black ${currentItem.type === 'CLASS' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-400'}`}>CLASSE (ex: 6A)</button>
+                                         <button disabled={modalMode === 'view'} onClick={() => setCurrentItem({...currentItem, type: 'GROUP'})} className={`flex-1 p-3 rounded-xl border-2 font-black ${currentItem.type === 'GROUP' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-400'}`}>GROUPE</button>
                                      </div>
                                  </div>
-                             )}
-
-                             {view === 'administrateurs' && (
-                                <div className="grid grid-cols-2 gap-4">
-                                     <input 
-                                        className="w-full p-3 border rounded bg-slate-50 disabled:opacity-60" 
-                                        placeholder="Mot de Passe" 
-                                        value={currentItem.password||''} 
-                                        disabled={modalMode === 'view'}
-                                        onChange={e=>setCurrentItem({...currentItem, password:e.target.value})} 
-                                    />
-                                </div>
                              )}
                         </div>
                         
@@ -833,25 +752,12 @@ export default function AdminDashboard({ user }) {
             {showMagicModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setShowMagicModal(false)}>
                     <div className="bg-white w-full max-w-3xl rounded-3xl p-8 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-black uppercase mb-2 text-indigo-600">Import Élèves (IA)</h3>
-                        <div className="flex justify-between items-center mb-4">
-                            <p className="text-xs font-bold text-slate-400 uppercase">Collez une liste brute (Excel, Word, Texte) ou importez un CSV.</p>
+                        <h3 className="text-xl font-black uppercase mb-2 text-indigo-600">Import Massif (Logs)</h3>
+                        <div className="w-full h-64 bg-slate-900 text-emerald-400 font-mono text-xs p-4 rounded-2xl overflow-y-auto border-2 border-slate-800">
+                            {magicLog.split('\n').map((l, i) => <div key={i}>{l}</div>)}
                         </div>
-                        {magicLog ? (
-                            <div className="w-full h-64 bg-slate-900 text-emerald-400 font-mono text-xs p-4 rounded-2xl overflow-y-auto border-2 border-slate-800">
-                                {magicLog.split('\n').map((l, i) => <div key={i}>{l}</div>)}
-                            </div>
-                        ) : (
-                            <textarea 
-                                className="w-full h-64 bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 font-mono text-xs focus:border-indigo-500 outline-none resize-none mb-6"
-                                placeholder="Exemple :&#10;vuillet.jean@ecole.com&#10;Dupont Pierre 6A Option Latin..."
-                                value={magicText}
-                                onChange={e => setMagicText(e.target.value)}
-                            />
-                        )}
                         <div className="flex justify-end gap-3 mt-4">
                             <button onClick={() => setShowMagicModal(false)} className="px-5 py-3 rounded-xl font-bold text-xs uppercase text-slate-500 hover:bg-slate-100">Fermer</button>
-                            {!magicLog && <button onClick={handleMagicImport} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase">Lancer l'Analyse</button>}
                         </div>
                     </div>
                 </div>

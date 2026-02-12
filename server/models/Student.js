@@ -18,15 +18,14 @@ const NoteSchema = new mongoose.Schema({
 }, { _id: false });
 
 const StudentSchema = new mongoose.Schema({
-    // Identité
+    // Identité (Règles strictes : Prénom + Nom Unique)
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, uppercase: true, trim: true },
-    fullName: { type: String, trim: true }, // ✅ NOUVEAU CHAMP NOM COMPLET
+    fullName: { type: String, trim: true }, // ✅ STOCKAGE DU NOM COMPLET
     
-    // --- NOUVEAUX CHAMPS ---
+    // Attributs
     gender: { type: String, enum: ['M', 'F'], default: 'M' },
     birthDate: { type: String, default: "" }, // Format texte DD/MM/YYYY
-    
     password: { type: String, default: "123456" },
     
     // Contacts
@@ -35,7 +34,7 @@ const StudentSchema = new mongoose.Schema({
 
     // Scolarité
     classId: { type: mongoose.Schema.Types.ObjectId, ref: 'Classroom' },
-    currentClass: { type: String },
+    currentClass: { type: String }, // Nom de la classe pour affichage rapide
     currentLevel: { type: String },
     assignedGroups: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Classroom' }],
 
@@ -59,10 +58,11 @@ const StudentSchema = new mongoose.Schema({
 }, { collection: 'students' });
 
 // 🛡️ CONTRAINTE D'UNICITÉ : Le couple Prénom + Nom doit être unique
+// L'email doit aussi être unique s'il est renseigné
 StudentSchema.index({ firstName: 1, lastName: 1 }, { unique: true });
-StudentSchema.index({ email: 1 }, { unique: true, sparse: true }); // Email unique si renseigné
+StudentSchema.index({ email: 1 }, { unique: true, sparse: true });
 
-// --- MÉTHODES MÉTIER (ASYNC pour appels BDD) ---
+// --- MÉTHODES MÉTIER ---
 StudentSchema.methods.addCross = async function(teacherId) {
     let record = this.behaviorRecords.find(r => r.teacherId === teacherId);
     if (!record) { record = { teacherId, crosses: 0, bonuses: 0 }; this.behaviorRecords.push(record); }
@@ -71,13 +71,6 @@ StudentSchema.methods.addCross = async function(teacherId) {
     if (record.crosses >= 3) {
         this.punishmentStatus = 'PENDING';
         this.punishmentDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-        try {
-            if (mongoose.models['Homework']) {
-                const Homework = mongoose.model('Homework');
-                const punishment = await Homework.findOne({ isPunishment: true, $or: [{ level: this.currentLevel }, { level: 'GLOBAL' }] }).sort({ createdAt: -1 });
-                if (punishment) this.activePunishmentId = punishment._id;
-            }
-        } catch (e) {}
     }
     return this.save();
 };

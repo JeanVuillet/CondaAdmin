@@ -19,4 +19,13 @@ Créer/Modifier/visualiser/Supprimer une classe (ex: 6A) . Dans une classe voir 
 Créer/Modifier/visualiser/Supprimer un groupe (ex: 3C LVA Anglais).Dans un groupe voir la liste des élèves.
 Créer/Modifier/visualiser/Supprimer un Professeur : Lui assigner ses Matières et ses Classes et ses Groupes (ex: 2A, 1D BFI).l'ensemble Prénom + Nom doit être une clé unique.
 Créer/Modifier/Visualiser/Supprimer un Élève : Définir son Nomcomplet, Email, nom = première partie du mail, prénom = deuxième partie du mail,Email Parents, Classe principale et ses Groupes (Options). l'ensemble Prénom + Nom doit être une clé unique.
-Importation Massive : Je peux importer des listes d'élèves via copier-coller (texte tableau) ou fichier CSV. L'IA doit parser les colonnes (Nom à partir de la premère partie de l'Email, Prénom à partir de la deuxième partie de lEmail, nomcomplet, Classe, Options, Email) automatiquement.
+Importation Massive : Je peux importer des listes d'élèves a partir d'un fichier CSV dont le nom doit être Classe.cvs ( exemple "1D.csv"). Il faut vérifier que le nom du fichier correspond à la classe choisie. L'IA doit parser les colonnes automatiquement de la manière suivante :
+EMAIL à partir de la colonne Email
+LASTNAME à partir de la première partie de l'Email ( avant le .)
+FIRSTNAME à partir de la deuxième partie de l'Email
+FULLNAME à partir de la colonne élève
+GENDER à partir de la première lettre de la colonne sexe
+BIRTHDATE à partir de la colonne "Né(e) le"
+PASSWORD initialiser avec BIRTHDATE au format jjmmaaaa
+CURRENTCLASS à partir de la classe choisie
+ASSIGNEDGROUPS : les groupes de l'élève sont à prendre dans les colonnes M (option 1), N (option 2), O (option 3), P ( Autres options). Les groupes sont séparés par des virgules et le code groupe se construit de la manière suivante : classe + " "+ groupe,  exemple "1D ANGLAIS"
