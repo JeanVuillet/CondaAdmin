@@ -555,8 +555,9 @@ export default function AdminDashboard({ user }) {
             </div>
 
             {/* ... MODALES (ZOOM, VIEW, EDIT) ... */}
+            {/* ✅ CORRECTION : Z-INDEX AUGMENTÉ À 60 POUR PASSER AU DESSUS DE LA LISTE */}
             {zoomedItem && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setZoomedItem(null)}>
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setZoomedItem(null)}>
                     <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
                         <div className="bg-indigo-600 p-6 text-white text-center">
                             <div className="text-4xl mb-2">{zoomedItem.gender === 'F' ? '👩' : '👨'}</div>
@@ -584,6 +585,48 @@ export default function AdminDashboard({ user }) {
                         </div>
                         <div className="p-4 bg-slate-50 text-center">
                             <button onClick={() => setZoomedItem(null)} className="btn-action w-full">FERMER</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {viewingClass && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setViewingClass(null)}>
+                    <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-black text-lg uppercase text-slate-700">LISTE {viewingClass.name}</h3>
+                            <button onClick={() => setViewingClass(null)} className="text-slate-400 hover:text-red-500 font-black">✕</button>
+                        </div>
+                        
+                        <div className="p-4 h-96 overflow-y-auto bg-slate-50">
+                             {allStudents.filter(s => {
+                                 const targetId = String(viewingClass._id);
+                                 // Vérification Classe Principale
+                                 const mainClassMatch = String(s.classId) === targetId;
+                                 // Vérification Groupes (Safe array check)
+                                 const groupsMatch = Array.isArray(s.assignedGroups) && s.assignedGroups.map(String).includes(targetId);
+                                 return mainClassMatch || groupsMatch;
+                             })
+                             .sort((a,b) => a.lastName.localeCompare(b.lastName))
+                             .map(s => (
+                                 <div key={s._id} className="item-card !p-4 !mb-2 !shadow-sm hover:!bg-white flex justify-between items-center">
+                                     <div className="item-main">
+                                         <span className="item-title text-sm">
+                                             {s.gender === 'F' ? '👩' : '👨'} {s.lastName} {s.firstName}
+                                         </span>
+                                         <span className="item-sub text-xs">
+                                             {s.email}
+                                         </span>
+                                     </div>
+                                     <div className="item-actions">
+                                         <button onClick={() => setZoomedItem(s)} className="btn-action bg-cyan-50 text-cyan-600">🔍</button>
+                                     </div>
+                                 </div>
+                             ))}
+                             
+                             {allStudents.filter(s => String(s.classId) === String(viewingClass._id) || (s.assignedGroups || []).map(String).includes(String(viewingClass._id))).length === 0 && (
+                                 <div className="text-center text-slate-400 font-bold italic mt-10">Aucun élève dans ce groupe/classe.</div>
+                             )}
                         </div>
                     </div>
                 </div>
