@@ -8,13 +8,19 @@ const SectionSchema = new mongoose.Schema({
 }, { _id: false });
 
 const AdminSchema = new mongoose.Schema({
-    firstName: { type: String, required: true },
-    lastName: { type: String, required: true },
+    firstName: { type: String, required: true, trim: true },
+    lastName: { type: String, required: true, trim: true, uppercase: true },
+    // ✅ AJOUT : Email obligatoire et unique
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
     role: { type: String, enum: ['admin', 'developer'], default: 'admin' },
     subjectSections: { type: [SectionSchema], default: [] },
     isDeveloper: { type: Boolean, default: false },
     isTestAccount: { type: Boolean, default: false }
 }, { collection: 'admins' });
+
+// 🛡️ SÉCURITÉ : Index Unique sur Prénom + Nom ET sur Email
+AdminSchema.index({ firstName: 1, lastName: 1 }, { unique: true });
+AdminSchema.index({ email: 1 }, { unique: true });
 
 module.exports = mongoose.models.Admin || mongoose.model('Admin', AdminSchema);

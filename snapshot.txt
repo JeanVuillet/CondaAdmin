@@ -205,7 +205,7 @@ setInterval(applyUpdate, 1500);
 {
   "status": "OK",
   "file": null,
-  "timestamp": 1770841605450
+  "timestamp": 1770931624518
 }
 [[[£ END: apply_status.json £]]]
 
@@ -797,10 +797,16 @@ export default function AdminDashboard({ user }) {
              // Assurance Nom Complet
              if (!dataToSend.fullName) dataToSend.fullName = `${dataToSend.lastName} ${dataToSend.firstName}`;
              
-             // Assurance Password par défaut
+             // Assurance Password par défaut (Auto-génération si vide)
              if (!dataToSend.password) {
                  if(dataToSend.birthDate) {
-                     dataToSend.password = dataToSend.birthDate.replace(/[^0-9]/g, '');
+                     // Tentative format JJMMAAAA sur saisie manuelle
+                     const parts = dataToSend.birthDate.split(/[\/\-\.]/);
+                     if (parts.length === 3) {
+                         dataToSend.password = parts[0].padStart(2,'0') + parts[1].padStart(2,'0') + parts[2];
+                     } else {
+                         dataToSend.password = dataToSend.birthDate.replace(/[^0-9]/g, '');
+                     }
                  } else {
                     dataToSend.password = "123456";
                  }
@@ -834,10 +840,6 @@ export default function AdminDashboard({ user }) {
         } else {
             setCurrentItem({ ...currentItem, [field]: [...currentList, id] });
         }
-    };
-
-    const normalize = (str) => {
-        return str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim() : "";
     };
 
     const normalizeHeader = (str) => {
@@ -909,20 +911,22 @@ export default function AdminDashboard({ user }) {
                     email: headers.findIndex(h => h.includes('email') || h.includes('mail')),
                     fullname: headers.findIndex(h => h.includes('eleve') || h.includes('nom complet')),
                     sex: headers.findIndex(h => h.includes('sexe') || h.includes('genre')),
-                    birthDate: headers.findIndex(h => h.includes('ne le') || h.includes('naissance')),
-                    // Mapping Options (M, N, O souvent)
-                    // Si on ne trouve pas les headers exacts, on tente les indices 12, 13, 14 (Excel M, N, O)
+                    birthDate: headers.findIndex(h => h.includes('ne(e) le') || h.includes('ne le') || h.includes('naissance')),
+                    
+                    // RÈGLES STRICTES COLONNES M(12), N(13), O(14), P(15)
                     opt1: headers.findIndex(h => h.includes('option 1') || h.includes('groupe 1')),
                     opt2: headers.findIndex(h => h.includes('option 2') || h.includes('groupe 2')),
-                    opt3: headers.findIndex(h => h.includes('option 3') || h.includes('groupe 3'))
+                    opt3: headers.findIndex(h => h.includes('option 3') || h.includes('groupe 3')),
+                    opt4: headers.findIndex(h => h.includes('option 4') || h.includes('groupe 4') || h.includes('autre'))
                 };
 
-                // Fallback Indices (M=12, N=13, O=14) si headers introuvables
-                if (map.opt1 === -1 && headers.length > 12) map.opt1 = 12;
-                if (map.opt2 === -1 && headers.length > 13) map.opt2 = 13;
-                if (map.opt3 === -1 && headers.length > 14) map.opt3 = 14;
+                // FORCE LES COLONNES M, N, O, P SI NON TROUVÉES VIA HEADER
+                if (map.opt1 === -1) map.opt1 = 12;
+                if (map.opt2 === -1) map.opt2 = 13;
+                if (map.opt3 === -1) map.opt3 = 14;
+                if (map.opt4 === -1) map.opt4 = 15;
 
-                if (map.email === -1) throw new Error("Colonne 'Email' introuvable (Requise).");
+                if (map.email === -1) throw new Error("Colonne 'Email' introuvable (Requise pour nom/prénom).");
 
                 setMagicLog(`🎯 Classe Cible : ${targetClassName}`);
                 
@@ -966,35 +970,50 @@ export default function AdminDashboard({ user }) {
                         if (firstChar === 'F' || firstChar === 'W') gender = 'F';
                     }
 
-                    // RÈGLE : Password = BirthDate digits (ddmmyyyy)
-                    let birthDate = (map.birthDate !== -1 && cols[map.birthDate]) ? cols[map.birthDate] : "";
+                    // 📅 RÈGLE : Password = BirthDate format JJMMAAAA
+                    let birthDate = (map.birthDate !== -1 && cols[map.birthDate]) ? cols[map.birthDate].trim() : "";
                     let password = "123456"; 
+                    
                     if (birthDate) {
-                        const digits = birthDate.replace(/[^0-9]/g, '');
-                        if (digits.length >= 6) password = digits; 
+                        // Tentative de formatage strict JJMMAAAA (01012000)
+                        const parts = birthDate.split(/[\/\-\.]/);
+                        if (parts.length === 3) {
+                            const d = parts[0].trim().padStart(2, '0');
+                            const m = parts[1].trim().padStart(2, '0');
+                            // Si année format YY (ex: 05), on ajoute 20
+                            let y = parts[2].trim();
+                            if(y.length === 2) y = "20" + y;
+                            
+                            password = `${d}${m}${y}`;
+                            birthDate = `${d}/${m}/${y}`; // Standardize display
+                        } else {
+                            // Fallback
+                            const digits = birthDate.replace(/[^0-9]/g, '');
+                            if (digits.length >= 6) password = digits; 
+                        }
                     }
 
-                    // --- C. PARSING GROUPES (Options M, N, O) ---
+                    // --- C. PARSING GROUPES (Options M, N, O, P) ---
                     // RÈGLE : "Classe + ' ' + Groupe" (ex: "1D ANGLAIS")
                     let assignedGroups = [];
-                    const optionCols = [map.opt1, map.opt2, map.opt3].filter(idx => idx !== -1);
+                    const optionCols = [map.opt1, map.opt2, map.opt3, map.opt4].filter(idx => idx !== -1);
                     
                     optionCols.forEach(idx => {
                         const val = cols[idx];
                         if (val && val.length > 1) {
-                            // On gère si plusieurs groupes sont séparés par virgule
+                            // On gère si plusieurs groupes sont séparés par virgule (ex: "LATIN, CHORALE")
                             const parts = val.split(/[,\/]/);
                             parts.forEach(part => {
                                 const cleanOptionName = part.trim().toUpperCase();
                                 if (cleanOptionName) {
                                     const constructedGroupName = `${targetClassName} ${cleanOptionName}`;
-                                    // Recherche ID du groupe
+                                    // Recherche ID du groupe existant
                                     const grpObj = allClasses.find(c => c.type === 'GROUP' && c.name === constructedGroupName);
                                     if (grpObj) {
                                         assignedGroups.push(grpObj._id);
                                     } else {
-                                        // Optionnel : On pourrait créer le groupe ici, mais par sécurité on log
-                                        // console.log("Groupe inconnu:", constructedGroupName);
+                                        // Log warning pour le prof
+                                        // setMagicLog(`⚠️ Groupe ignoré (Inexistant) : ${constructedGroupName}`);
                                     }
                                 }
                             });
@@ -1003,8 +1022,8 @@ export default function AdminDashboard({ user }) {
 
                     // 🔎 RECHERCHE DOUBLON
                     const existingStudent = allStudents.find(s => 
-                        normalize(s.email) === normalize(email) || 
-                        (normalize(s.lastName) === normalize(lastName) && normalize(s.firstName) === normalize(firstName))
+                        s.email.toLowerCase() === email.toLowerCase() || 
+                        (s.lastName.toUpperCase() === lastName && s.firstName.toLowerCase() === firstName.toLowerCase())
                     );
 
                     let payload = {
@@ -1204,13 +1223,16 @@ export default function AdminDashboard({ user }) {
                         </h3>
                         
                         <div className="space-y-4 mb-8">
-                             {(view === 'students' || view === 'teachers' || view === 'administrateurs') && modalMode !== 'view' && (
-                                <div className="mb-6 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                                    <label className="form-label !text-indigo-600 !mt-0 mb-2">⚡ Saisie via Email (Déduit Nom/Prénom)</label>
+                             {(view === 'students' || view === 'teachers' || view === 'administrateurs') && (
+                                <div className={`mb-6 p-4 rounded-xl border ${modalMode !== 'view' ? 'bg-indigo-50 border-indigo-100' : 'bg-white border-slate-200'}`}>
+                                    <label className={`form-label !mt-0 mb-2 ${modalMode !== 'view' ? '!text-indigo-600' : ''}`}>
+                                        {modalMode !== 'view' ? '⚡ Saisie via Email (Déduit Nom/Prénom)' : 'Email'}
+                                    </label>
                                     <input 
-                                        className="w-full p-3 border-2 border-indigo-200 rounded-lg bg-white font-bold text-indigo-900 placeholder-indigo-200 focus:border-indigo-500 focus:outline-none" 
+                                        className={`w-full p-3 border-2 rounded-lg font-bold outline-none ${modalMode !== 'view' ? 'border-indigo-200 bg-white text-indigo-900 placeholder-indigo-200 focus:border-indigo-500' : 'border-slate-200 bg-slate-50 text-slate-500'}`}
                                         placeholder="ex: nom.prenom@ecole.com" 
                                         value={currentItem.email || ''}
+                                        disabled={modalMode === 'view'}
                                         onChange={e => {
                                             const val = e.target.value;
                                             const newState = { ...currentItem, email: val };
@@ -1222,7 +1244,7 @@ export default function AdminDashboard({ user }) {
                                             setCurrentItem(newState);
                                         }}
                                     />
-                                    <div className="text-[10px] text-indigo-400 text-right mt-1 italic">Format attendu : nom.prenom@...</div>
+                                    {modalMode !== 'view' && <div className="text-[10px] text-indigo-400 text-right mt-1 italic">Format attendu : nom.prenom@...</div>}
                                 </div>
                              )}
 
@@ -1286,11 +1308,22 @@ export default function AdminDashboard({ user }) {
                                             ))}
                                         </div>
                                     </div>
+                                    
+                                    {/* SÉPARATION DES CLASSES ET DES GROUPES */}
                                     <div>
-                                        <label className="form-label">Classes</label>
+                                        <label className="form-label">Classes Principales</label>
                                         <div className="selection-grid">
-                                            {allClasses.map(cls => (
+                                            {allClasses.filter(c => c.type === 'CLASS').map(cls => (
                                                 <div key={cls._id} onClick={() => toggleRelation('assignedClasses', cls._id)} className={`toggle-chip ${currentItem.assignedClasses.includes(cls._id) ? 'selected' : ''} ${modalMode === 'view' ? 'disabled' : ''}`}>{cls.name}</div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-4">
+                                        <label className="form-label">Groupes / Options</label>
+                                        <div className="selection-grid">
+                                            {allClasses.filter(c => c.type === 'GROUP').map(grp => (
+                                                <div key={grp._id} onClick={() => toggleRelation('assignedClasses', grp._id)} className={`toggle-chip ${currentItem.assignedClasses.includes(grp._id) ? 'selected' : ''} ${modalMode === 'view' ? 'disabled' : ''}`}>{grp.name}</div>
                                             ))}
                                         </div>
                                     </div>
@@ -3342,9 +3375,9 @@ C'est la base de données et la structure de l'établissement.
 Fonctionnalités Sanctuarisées (À ne pas casser) :
 
 Gestion Utilisateurs admin uniquement.
-Créer/Modifier/visualiser/Supprimer un Admin (Nom, Prénom, Email,Password ).
-Créer/Modifier/visualiser/Supprimer une classe (ex: 6A) . Dans une classe voir la liste des élèves.
-Créer/Modifier/visualiser/Supprimer un groupe (ex: 3C LVA Anglais).Dans un groupe voir la liste des élèves.
+Créer/Modifier/visualiser/Supprimer un Admin (Nom, Prénom, Email,Password ).l'ensemble Prénom + Nom doit être une clé unique.
+Créer/Modifier/visualiser/Supprimer une classe (ex: 6A) . Le nom de la classe doit être une clé unique. Dans une classe voir la liste des élèves.
+Créer/Modifier/visualiser/Supprimer un groupe (ex: 3C LVA Anglais).Dans un groupe voir la liste des élèves.Le nom du groupe doit être une clé unique
 Créer/Modifier/visualiser/Supprimer un Professeur : Lui assigner ses Matières et ses Classes et ses Groupes (ex: 2A, 1D BFI).l'ensemble Prénom + Nom doit être une clé unique.
 Créer/Modifier/Visualiser/Supprimer un Élève : Définir son Nomcomplet, Email, nom = première partie du mail, prénom = deuxième partie du mail,Email Parents, Classe principale et ses Groupes (Options). l'ensemble Prénom + Nom doit être une clé unique.
 Importation Massive : Je peux importer des listes d'élèves a partir d'un fichier CSV dont le nom doit être Classe.cvs ( exemple "1D.csv"). Il faut vérifier que le nom du fichier correspond à la classe choisie. L'IA doit parser les colonnes automatiquement de la manière suivante :
@@ -3356,7 +3389,8 @@ GENDER à partir de la première lettre de la colonne sexe
 BIRTHDATE à partir de la colonne "Né(e) le"
 PASSWORD initialiser avec BIRTHDATE au format jjmmaaaa
 CURRENTCLASS à partir de la classe choisie
-ASSIGNEDGROUPS : les groupes de l'élève sont à prendre dans les colonnes M (option 1), N (option 2), O (option 3). Les groupes sont séparés par des virgules et le code groupe se construit de la manière suivante : classe + " "+ groupe,  exemple "1D ANGLAIS"
+ASSIGNEDGROUPS : les groupes de l'élève sont à prendre dans les colonnes M (option 1), N (option 2), O (option 3), P ( Autres options). Les groupes sont séparés par des virgules et le code groupe se construit de la manière suivante : classe + " "+ groupe,  exemple "1D ANGLAIS". Si un groupe n'existe pas dans CLASSROOMS, il faut le créer.
+A la fin de l'import, il faut un compte rendu pour signaler les erreurs.
 [[[£ END: systemInstructions.md £]]]
 
 [[[£ FILE: tests/integrity.test.js £]]]

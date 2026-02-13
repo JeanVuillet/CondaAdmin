@@ -146,6 +146,25 @@ export default function AdminDashboard({ user }) {
              }
         }
 
+        // ✅ VALIDATION ADMIN : EMAIL OBLIGATOIRE + UNICITÉ NOM/PRÉNOM
+        if (view === 'administrateurs') {
+            // 1. Email Check
+            if (!dataToSend.email || !dataToSend.email.includes('@')) {
+                return alert("⚠️ L'email est obligatoire et doit être valide pour un administrateur.");
+            }
+
+            // 2. Nom+Prénom Check (Client-Side)
+            const duplicateName = items.find(admin => 
+                admin._id !== dataToSend._id && // On ne se compare pas à soi-même en édition
+                admin.firstName.trim().toLowerCase() === dataToSend.firstName.trim().toLowerCase() &&
+                admin.lastName.trim().toLowerCase() === dataToSend.lastName.trim().toLowerCase()
+            );
+
+            if (duplicateName) {
+                return alert(`⛔ ERREUR : Un administrateur nommé "${dataToSend.firstName} ${dataToSend.lastName}" existe déjà.`);
+            }
+        }
+
         if (view === 'groups') dataToSend.type = 'GROUP'; 
 
         try {
@@ -157,7 +176,12 @@ export default function AdminDashboard({ user }) {
             const result = await res.json();
             
             if (result.error || result.code === 11000) {
-                alert("❌ ERREUR : Cet élément existe déjà (Doublon Prénom+Nom ou Email).");
+                // Gestion fine des doublons remontés par le serveur
+                if (result.keyPattern && result.keyPattern.email) {
+                    alert("❌ ERREUR : Cet email est déjà utilisé par un autre administrateur.");
+                } else {
+                    alert("❌ ERREUR : Cet élément existe déjà (Doublon Prénom+Nom ou Email).");
+                }
             } else {
                 setModalMode(null); loadData();
             }
@@ -204,10 +228,10 @@ export default function AdminDashboard({ user }) {
         const file = e.target.files[0];
         if (!file || !targetImportClass) return;
 
-        // 1. VERIF NOM FICHIER (Stricte "Classe.csv" ou "Classe.xlsx")
         const classObj = allClasses.find(c => c._id === targetImportClass);
         const targetClassName = classObj ? classObj.name.toUpperCase().trim() : "SANS CLASSE";
         
+        // 1. VERIF NOM FICHIER
         if (!file.name.toUpperCase().includes(targetClassName)) {
             alert(`⛔ FICHIER REJETÉ.\n\nRègle : Le fichier doit contenir "${targetClassName}" dans son nom.\nFichier actuel : ${file.name}`);
             e.target.value = ""; 
@@ -229,56 +253,108 @@ export default function AdminDashboard({ user }) {
                 const headerLineIndex = 0; 
                 const headerLineRaw = lines[headerLineIndex];
 
-                // 2. DÉTECTION AUTO SÉPARATEUR
+                // 2. DÉTECTION SÉPARATEUR
                 const countSemi = (headerLineRaw.match(/;/g) || []).length;
                 const countComma = (headerLineRaw.match(/,/g) || []).length;
                 const separator = countSemi >= countComma ? ';' : ',';
-                
                 setMagicLog(`⚙️ Séparateur : "${separator}"`);
 
                 const headers = headerLineRaw.split(separator).map(h => normalizeHeader(h));
-                setMagicLog(`📋 Colonnes trouvées : ${headers.join(' | ')}\n`);
+                setMagicLog(`📋 En-têtes détectés : ${headers.length} colonnes`);
 
-                // 3. MAPPING STRICT SELON LES RÈGLES
+                // 3. MAPPING DES COLONNES
                 const map = {
                     email: headers.findIndex(h => h.includes('email') || h.includes('mail')),
                     fullname: headers.findIndex(h => h.includes('eleve') || h.includes('nom complet')),
                     sex: headers.findIndex(h => h.includes('sexe') || h.includes('genre')),
-                    // 📅 DÉTECTION COLONNE "Né(e) le" (Souvent C)
                     birthDate: headers.findIndex(h => h.includes('ne(e) le') || h.includes('ne le') || h.includes('naissance')),
-                    
-                    // Mapping Options (M, N, O, P)
-                    opt1: headers.findIndex(h => h.includes('option 1') || h.includes('groupe 1')),
-                    opt2: headers.findIndex(h => h.includes('option 2') || h.includes('groupe 2')),
-                    opt3: headers.findIndex(h => h.includes('option 3') || h.includes('groupe 3')),
-                    opt4: headers.findIndex(h => h.includes('option 4') || h.includes('groupe 4') || h.includes('autre'))
                 };
 
-                // Fallback Indices (M=12, N=13, O=14, P=15) si headers introuvables mais colonnes suffisantes
-                if (map.opt1 === -1 && headers.length > 12) map.opt1 = 12;
-                if (map.opt2 === -1 && headers.length > 13) map.opt2 = 13;
-                if (map.opt3 === -1 && headers.length > 14) map.opt3 = 14;
-                if (map.opt4 === -1 && headers.length > 15) map.opt4 = 15;
-
-                if (map.email === -1) throw new Error("Colonne 'Email' introuvable (Requise).");
-
-                setMagicLog(`🎯 Classe Cible : ${targetClassName}`);
+                // RECHERCHE COLONNES GROUPES (M, N, O, P) - Indices 12, 13, 14, 15
+                const groupCols = [12, 13, 14]; // M, N, O toujours inclus
                 
-                let successCount = 0;
-                let updateCount = 0;
-                let errorCount = 0;
-                
+                // CONDITION POUR LA COLONNE P (15) : Seulement si titre = "Autres options"
+                if (headers[15] && headers[15].includes('autre')) {
+                    groupCols.push(15);
+                    setMagicLog(`✅ Colonne P (Autres options) détectée et activée.`);
+                } else {
+                    setMagicLog(`ℹ️ Colonne P ignorée (Titre non conforme : "${headers[15] || 'Vide'}")`);
+                }
+
+                if (map.email === -1) throw new Error("Colonne 'Email' introuvable (Requise pour nom/prénom).");
+
+                // --- PHASE 1 : ANALYSE ET CRÉATION DES GROUPES MANQUANTS ---
+                setMagicLog(`\n🔎 ANALYSE DES GROUPES REQUIS...`);
+                const rowsToProcess = [];
+                const neededGroups = new Set();
+
                 for (let i = headerLineIndex + 1; i < lines.length; i++) {
                     const lineStr = lines[i];
                     if (!lineStr || lineStr.trim() === "") continue;
-
                     const cols = lineStr.split(separator).map(c => c.trim().replace(/"/g, ''));
+                    
+                    const rowGroupNames = [];
+                    
+                    groupCols.forEach(idx => {
+                        const cellContent = cols[idx];
+                        if(cellContent && cellContent.length > 1) {
+                            // Split par virgule si plusieurs groupes dans une case
+                            const parts = cellContent.split(',');
+                            parts.forEach(part => {
+                                const cleanOptionName = part.trim().toUpperCase();
+                                if(cleanOptionName) {
+                                    // CONSTRUCTION : CLASSE + " " + GROUPE
+                                    const fullGroupName = `${targetClassName} ${cleanOptionName}`;
+                                    neededGroups.add(fullGroupName);
+                                    rowGroupNames.push(fullGroupName);
+                                }
+                            });
+                        }
+                    });
+                    rowsToProcess.push({ cols, rowGroupNames });
+                }
 
-                    // --- A. PARSING IDENTITÉ ---
+                // Récupération ID des groupes existants
+                const groupNameIdMap = {};
+                allClasses.filter(c => c.type === 'GROUP').forEach(g => groupNameIdMap[g.name] = g._id);
+
+                let groupsCreated = 0;
+                // Création des manquants
+                for (const gName of neededGroups) {
+                    if (!groupNameIdMap[gName]) {
+                        try {
+                            setMagicLog(`🏗️ Création Groupe : ${gName}`);
+                            const res = await fetch('/api/admin/classrooms', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({ name: gName, type: 'GROUP' })
+                            });
+                            const newGroup = await res.json();
+                            if (newGroup._id) {
+                                groupNameIdMap[gName] = newGroup._id;
+                                groupsCreated++;
+                            }
+                        } catch(e) { console.error(e); }
+                    }
+                }
+                if(groupsCreated > 0) setMagicLog(`✅ ${groupsCreated} nouveaux groupes créés en base.`);
+
+                // --- PHASE 2 : SIMULATION & VALIDATION (TOLÉRANCE ZÉRO) ---
+                setMagicLog(`\n🛡️ SCAN ANTI-DOUBLONS EN COURS...`);
+                
+                const preparedPayloads = [];
+                const duplicateErrors = [];
+                const localEmailSet = new Set(); // Pour doubons internes au fichier
+                const localNameSet = new Set();
+
+                for (const row of rowsToProcess) {
+                    const cols = row.cols;
+                    const assignedGroups = row.rowGroupNames.map(name => groupNameIdMap[name]).filter(id => id);
+
+                    // --- PARSING IDENTITÉ ---
                     let email = cols[map.email] ? cols[map.email].toLowerCase() : "";
                     if (!email || !email.includes('@')) continue; 
 
-                    // RÈGLE : LastName = partie 1 email, FirstName = partie 2
                     let firstName = "Prénom";
                     let lastName = "NOM";
                     try {
@@ -293,79 +369,75 @@ export default function AdminDashboard({ user }) {
                         }
                     } catch(e) {}
 
-                    // RÈGLE : Fullname de la colonne ou concat
                     let fullName = (map.fullname !== -1 && cols[map.fullname]) ? cols[map.fullname] : `${lastName} ${firstName}`;
-
-                    // --- B. PARSING ATTRIBUTS ---
-                    // RÈGLE : Gender = 1ère lettre
+                    
+                    // --- ATTRUBUTS ---
                     let gender = 'M';
                     if (map.sex !== -1 && cols[map.sex]) {
                         const firstChar = cols[map.sex].charAt(0).toUpperCase();
                         if (firstChar === 'F' || firstChar === 'W') gender = 'F';
                     }
 
-                    // 📅 RÈGLE : Password = BirthDate format JJMMAAAA
+                    // --- DATES ---
                     let birthDate = (map.birthDate !== -1 && cols[map.birthDate]) ? cols[map.birthDate].trim() : "";
                     let password = "123456"; 
-                    
                     if (birthDate) {
-                        // Tentative de formatage strict JJMMAAAA (01012000)
                         const parts = birthDate.split(/[\/\-\.]/);
                         if (parts.length === 3) {
                             const d = parts[0].trim().padStart(2, '0');
                             const m = parts[1].trim().padStart(2, '0');
-                            const y = parts[2].trim();
+                            let y = parts[2].trim();
+                            if(y.length === 2) y = "20" + y;
                             password = `${d}${m}${y}`;
+                            birthDate = `${d}/${m}/${y}`;
                         } else {
-                            // Fallback si format non reconnu (juste les chiffres)
                             const digits = birthDate.replace(/[^0-9]/g, '');
                             if (digits.length >= 6) password = digits; 
                         }
                     }
 
-                    // --- C. PARSING GROUPES (Options M, N, O, P) ---
-                    // RÈGLE : "Classe + ' ' + Groupe" (ex: "1D ANGLAIS")
-                    let assignedGroups = [];
-                    const optionCols = [map.opt1, map.opt2, map.opt3, map.opt4].filter(idx => idx !== -1);
-                    
-                    optionCols.forEach(idx => {
-                        const val = cols[idx];
-                        if (val && val.length > 1) {
-                            // On gère si plusieurs groupes sont séparés par virgule (ex: "LATIN, CHORALE")
-                            const parts = val.split(/[,\/]/);
-                            parts.forEach(part => {
-                                const cleanOptionName = part.trim().toUpperCase();
-                                if (cleanOptionName) {
-                                    const constructedGroupName = `${targetClassName} ${cleanOptionName}`;
-                                    // Recherche ID du groupe existant
-                                    const grpObj = allClasses.find(c => c.type === 'GROUP' && c.name === constructedGroupName);
-                                    if (grpObj) {
-                                        assignedGroups.push(grpObj._id);
-                                    } else {
-                                        // Optionnel: On pourrait créer le groupe ici, mais par sécurité on log
-                                    }
-                                }
-                            });
-                        }
-                    });
-
-                    // 🔎 RECHERCHE DOUBLON
-                    const existingStudent = allStudents.find(s => 
-                        s.email.toLowerCase() === email.toLowerCase() || 
-                        (s.lastName.toUpperCase() === lastName && s.firstName.toLowerCase() === firstName.toLowerCase())
+                    // 🛑 VÉRIFICATION DOUBLON EN BASE DE DONNÉES
+                    const dbDuplicate = allStudents.find(s => 
+                        (s.lastName.toUpperCase() === lastName && s.firstName.toLowerCase() === firstName.toLowerCase()) || 
+                        (s.email.toLowerCase() === email.toLowerCase())
                     );
+                    
+                    // 🛑 VÉRIFICATION DOUBLON INTERNE FICHIER
+                    const internalDupEmail = localEmailSet.has(email);
+                    const internalDupName = localNameSet.has(`${firstName.toLowerCase()}|${lastName.toUpperCase()}`);
 
-                    let payload = {
-                        firstName, lastName, fullName, email, password, 
-                        classId: targetImportClass, 
-                        currentClass: targetClassName, 
-                        assignedGroups, gender, birthDate 
-                    };
-
-                    if (existingStudent) {
-                        payload._id = existingStudent._id; 
+                    if (dbDuplicate || internalDupEmail || internalDupName) {
+                        const cause = dbDuplicate ? "(Existe déjà en base)" : "(Doublon dans le fichier)";
+                        duplicateErrors.push(`🔴 ${firstName} ${lastName} ${cause}`);
+                    } else {
+                        localEmailSet.add(email);
+                        localNameSet.add(`${firstName.toLowerCase()}|${lastName.toUpperCase()}`);
+                        
+                        preparedPayloads.push({
+                            firstName, lastName, fullName, email, password, 
+                            classId: targetImportClass, 
+                            currentClass: targetClassName, 
+                            assignedGroups, gender, birthDate 
+                        });
                     }
+                }
 
+                // --- POINT DE DÉCISION ---
+                if (duplicateErrors.length > 0) {
+                    setMagicLog(`\n⛔ IMPORT ANNULÉ : ${duplicateErrors.length} DOUBLONS DÉTECTÉS.`);
+                    setMagicLog(`\n--- LISTE DES ERREURS ---\n`);
+                    duplicateErrors.forEach(err => setMagicLog(err));
+                    setMagicLog(`\n⚠️ Veuillez nettoyer votre fichier ou la base de données avant de réessayer.`);
+                    return; // ⛔ STOP ICI, RIEN N'EST ENVOYÉ EN BASE
+                }
+
+                // --- PHASE 3 : EXÉCUTION RÉELLE (POST) ---
+                setMagicLog(`\n🟢 VALIDATION OK. CRÉATION DE ${preparedPayloads.length} ÉLÈVES...`);
+                
+                let successCount = 0;
+                let errorCount = 0;
+
+                for (const payload of preparedPayloads) {
                     try {
                         const res = await fetch('/api/admin/students', {
                             method: 'POST',
@@ -373,23 +445,22 @@ export default function AdminDashboard({ user }) {
                             body: JSON.stringify(payload)
                         });
                         const data = await res.json();
-                        
                         if (data.error || data.code === 11000) {
                             errorCount++;
+                            setMagicLog(`❌ Erreur technique sur ${payload.firstName} ${payload.lastName}`);
                         } else {
-                            if (existingStudent) updateCount++; else successCount++;
+                            successCount++;
                         }
                     } catch (err) { errorCount++; }
                     
-                    if((successCount + updateCount) % 10 === 0) setMagicLog(`... ${successCount + updateCount} traités`);
+                    if((successCount + errorCount) % 5 === 0) setMagicLog(`... ${successCount + errorCount} traités`);
                 }
 
-                setMagicLog(`\n🎉 TERMINÉ : ${successCount} créés, ${updateCount} mis à jour.`);
-                if (errorCount > 0) setMagicLog(`⚠️ ${errorCount} erreurs (Doublons/Invalides).`);
+                setMagicLog(`\n🏁 RAPPORT FINAL :\n- Ajoutés : ${successCount}\n- Échecs techniques : ${errorCount}`);
 
                 e.target.value = ""; 
                 setTimeout(() => {
-                    if (confirm(`Import terminé.\n\nCréés: ${successCount}\nMis à jour: ${updateCount}\n\nRecharger la liste ?`)) {
+                    if (confirm(`SUCCÈS.\n\n${successCount} élèves importés.\n\nRecharger la liste ?`)) {
                         setShowMagicModal(false); setMagicLog(""); loadData();
                     }
                 }, 1000);
@@ -513,31 +584,6 @@ export default function AdminDashboard({ user }) {
                         </div>
                         <div className="p-4 bg-slate-50 text-center">
                             <button onClick={() => setZoomedItem(null)} className="btn-action w-full">FERMER</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {viewingClass && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setViewingClass(null)}>
-                    <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-black text-lg uppercase text-slate-700">LISTE {viewingClass.name}</h3>
-                            <button onClick={() => setViewingClass(null)} className="text-slate-400 hover:text-red-500 font-black">✕</button>
-                        </div>
-                        <div className="p-0 h-96 overflow-y-auto">
-                             {allStudents.filter(s => String(s.classId) === String(viewingClass._id) || (s.assignedGroups || []).includes(viewingClass._id))
-                                .sort((a,b) => a.lastName.localeCompare(b.lastName))
-                                .map(s => (
-                                    <div key={s._id} className="p-4 border-b hover:bg-slate-50 flex justify-between items-center">
-                                        <div>
-                                            <div className="font-bold text-slate-700">{s.lastName} {s.firstName}</div>
-                                            <div className="text-[10px] text-slate-400 font-mono">{s.birthDate} • {s.gender}</div>
-                                        </div>
-                                        <span className="text-xs font-mono text-slate-400">{s.email}</span>
-                                    </div>
-                                ))
-                             }
                         </div>
                     </div>
                 </div>
