@@ -10,16 +10,14 @@ const SectionSchema = new mongoose.Schema({
 const AdminSchema = new mongoose.Schema({
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true, uppercase: true },
-    // ✅ AJOUT : Email obligatoire et unique
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true },
+    password: { type: String, required: true }, // ⚠️ PAS DE HOOK ICI. Géré par le contrôleur.
     role: { type: String, enum: ['admin', 'developer'], default: 'admin' },
     subjectSections: { type: [SectionSchema], default: [] },
     isDeveloper: { type: Boolean, default: false },
     isTestAccount: { type: Boolean, default: false }
 }, { collection: 'admins' });
 
-// 🛡️ SÉCURITÉ : Index Unique sur Prénom + Nom ET sur Email
 AdminSchema.index({ firstName: 1, lastName: 1 }, { unique: true });
 AdminSchema.index({ email: 1 }, { unique: true });
 

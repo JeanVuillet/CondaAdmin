@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs'); // ✅ IMPORT CRUCIAL
 const AdminExpert = require('./experts/admin.expert'); 
 const AdminAI = require('./ai/admin.ai'); 
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // --- 🛠️ ROUTES DE GESTION GÉNÉRIQUES ---
-
 router.get('/classrooms', asyncHandler(async (req, res) => res.json(await mongoose.model('Classroom').find({}).sort({ name: 1 }).lean())));
 router.get('/subjects', asyncHandler(async (req, res) => res.json(await mongoose.model('Subject').find({}).sort({ name: 1 }).lean())));
 router.get('/students', asyncHandler(async (req, res) => res.json(await mongoose.model('Student').find({}).sort({ lastName: 1 }).lean())));
@@ -18,13 +18,10 @@ router.get('/admins', asyncHandler(async (req, res) => res.json(await mongoose.m
 router.post('/import/magic', asyncHandler(async (req, res) => {
     const { text, contextClass } = req.body;
     if (!text) return res.status(400).json({ error: "Aucun texte fourni" });
-
     try {
-        console.log(`🧠 [API] Demande Magic Import pour la classe contexte: ${contextClass}`);
         const result = await AdminAI.parseRawStudentData(text, contextClass || "SANS CLASSE");
         res.json(result);
     } catch (e) {
-        console.error("Erreur Magic Import:", e);
         res.status(500).json({ error: "Erreur IA: " + e.message });
     }
 }));
@@ -35,7 +32,6 @@ router.get('/database-dump', asyncHandler(async (req, res) => {
         const dump = await AdminExpert.getFullDump();
         res.json(dump);
     } catch (e) {
-        console.error("Dump Error:", e);
         res.status(500).json({ error: "Erreur lors du dump BDD" });
     }
 }));
@@ -59,12 +55,9 @@ router.post('/maintenance/purge/:collection', asyncHandler(async (req, res) => {
     const Model = mongoose.model(modelName);
     let query = {};
 
-    // Sécurité : Si on purge les Admins, on garde l'utilisateur courant
     if (collection === 'admins' && keepMeId) {
         query = { _id: { $ne: keepMeId } };
     }
-
-    // Filtre : Si on purge les étudiants d'une classe précise
     if (collection === 'students' && filterClassId && filterClassId !== 'TOUS') {
         query = { classId: filterClassId };
     }
@@ -73,31 +66,57 @@ router.post('/maintenance/purge/:collection', asyncHandler(async (req, res) => {
     res.json({ ok: true, deletedCount: result.deletedCount });
 }));
 
-// --- CRUD STANDARD AVEC GESTION DOUBLONS ---
+// --- CRUD STANDARD AVEC HASHAGE MANUEL FORCÉ ---
 router.post('/:collection', asyncHandler(async (req, res) => {
+    const collection = req.params.collection;
     const modelMap = { 'classrooms': 'Classroom', 'teachers': 'Teacher', 'students': 'Student', 'subjects': 'Subject', 'admins': 'Admin' };
-    const Model = mongoose.model(modelMap[req.params.collection]);
+    
+    if (!modelMap[collection]) return res.status(400).json({ error: "Collection invalide" });
+    const Model = mongoose.model(modelMap[collection]);
     
     try {
-        // Validation basique des champs requis
-        if (req.params.collection === 'students') {
-            if (!req.body.firstName || !req.body.lastName) {
-                return res.status(400).json({ error: "Nom et Prénom requis." });
-            }
-            // Normalisation forcée pour l'unicité
+        // Validation basique
+        if (collection === 'students') {
+            if (!req.body.firstName || !req.body.lastName) return res.status(400).json({ error: "Nom et Prénom requis." });
             req.body.firstName = req.body.firstName.trim();
             req.body.lastName = req.body.lastName.trim().toUpperCase();
         }
 
-        const result = req.body._id 
-            ? await Model.findByIdAndUpdate(req.body._id, req.body, { new: true }) 
-            : await Model.create(req.body);
+        // 🔒 LOGIQUE DE HASHAGE MANUELLE (FORCE BRUTE)
+        // On vérifie si c'est un Admin ou Prof ET si un mot de passe est envoyé
+        if ((collection === 'admins' || collection === 'teachers') && req.body.password && req.body.password.trim() !== "") {
+            
+            // LOG DE DÉBUG (Regardez votre terminal serveur)
+            console.log(`🔒 [SECURE] Hashage demandé pour ${collection}...`);
+            console.log(`   Mot de passe reçu (taille): ${req.body.password.length}`);
+            
+            // On ne re-hash pas si ça ressemble déjà à un hash bcrypt (commence par $2a$)
+            if (!req.body.password.startsWith('$2a$')) {
+                const salt = await bcrypt.genSalt(10);
+                const hash = await bcrypt.hash(req.body.password, salt);
+                req.body.password = hash; // On remplace le texte clair par le hash
+                console.log(`✅ [SECURE] Mot de passe crypté : ${hash.substring(0, 15)}...`);
+            } else {
+                console.log(`⚠️ [SECURE] Mot de passe déjà hashé, on ne touche pas.`);
+            }
+        }
+
+        let result;
+        if (req.body._id) {
+            // MODE UPDATE
+            // findByIdAndUpdate bypass les hooks, MAIS comme on a hashé manuellement ci-dessus, ça marchera !
+            result = await Model.findByIdAndUpdate(req.body._id, req.body, { new: true });
+        } else {
+            // MODE CREATE
+            result = await Model.create(req.body);
+        }
+        
         res.json(result);
+
     } catch (e) {
-        // Gestion propre de l'erreur "Duplicate Key" (Code 11000)
+        console.error("❌ ERREUR SAVE:", e);
         if (e.code === 11000) {
-            console.warn(`⚠️ Doublon détecté sur ${req.params.collection} (Key: ${JSON.stringify(e.keyValue)})`);
-            return res.status(400).json({ error: "Doublon détecté", code: 11000 });
+            return res.status(400).json({ error: "Doublon détecté (Email ou Nom déjà pris)", code: 11000 });
         }
         throw e;
     }

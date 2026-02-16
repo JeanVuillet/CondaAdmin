@@ -14,11 +14,12 @@ C'est la base de données et la structure de l'établissement.
 Fonctionnalités Sanctuarisées (À ne pas casser) :
 
 Gestion Utilisateurs admin uniquement.
-Créer/Modifier/visualiser/Supprimer un Admin (Nom, Prénom, Email,Password ).l'ensemble Prénom + Nom doit être une clé unique.
-Créer/Modifier/visualiser/Supprimer une classe (ex: 6A) . Le nom de la classe doit être une clé unique. Dans une classe voir la liste des élèves.
-Créer/Modifier/visualiser/Supprimer un groupe (ex: 3C LVA Anglais).Dans un groupe voir la liste des élèves.Le nom du groupe doit être une clé unique
-Créer/Modifier/visualiser/Supprimer un Professeur : Lui assigner ses Matières et ses Classes et ses Groupes (ex: 2A, 1D BFI).l'ensemble Prénom + Nom doit être une clé unique.
-Créer/Modifier/Visualiser/Supprimer un Élève : Définir son Nomcomplet, Email, nom = première partie du mail, prénom = deuxième partie du mail,Email Parents, Classe principale et ses Groupes (Options). l'ensemble Prénom + Nom doit être une clé unique.
+Toute nouvelle connection doit commencer par la fenêtre d'authentification
+Admins : Créer/Modifier(bouton edit)/zoom( bouton loupe)/Supprimer (bouton x) un Admin (Nom, Prénom, Email,Password ).l'ensemble Prénom + Nom doit être une clé unique. Les password doivent faire l'objet de hashage ( bcryptjs).
+Classes : Créer/Modifier(bouton edit)/zoom( bouton loupe)/Supprimer (bouton x)/lister les èlèves(bouton élèves) une classe (ex: 6A) . Le nom de la classe doit être une clé unique. Dans une classe voir la liste des élèves.
+Groupe : Créer/Modifier(bouton edit)/zoom( bouton loupe)/Supprimer (bouton x) un groupe (ex: 3C LVA Anglais).Dans un groupe voir la liste des élèves.Le nom du groupe doit être une clé unique
+Professeur : Créer/Modifier(bouton edit)/zoom( bouton loupe)/Supprimer (bouton x)un Professeur :  Email, nom = première partie du mail, prénom = deuxième partie du mail,password qui doit faire l'objet de hashage ( bcryptjs).Lui assigner ses Matières et ses Classes et ses Groupes (ex: 2A, 1D BFI).l'ensemble Prénom + Nom doit être une clé unique.
+Elèves :  Créer/Modifier(bouton edit)/zoom( bouton loupe)/Supprimer (bouton x) un Élève : Définir son Nomcomplet, Email, nom = première partie du mail, prénom = deuxième partie du mail,Email Parents, Classe principale et ses Groupes (Options). l'ensemble Prénom + Nom doit être une clé unique.
 Importation Massive : Je peux importer des listes d'élèves a partir d'un fichier CSV dont le nom doit être Classe.cvs ( exemple "1D.csv"). Il faut vérifier que le nom du fichier correspond à la classe choisie. L'IA doit parser les colonnes automatiquement de la manière suivante :
 EMAIL à partir de la colonne Email
 LASTNAME à partir de la première partie de l'Email ( avant le .)

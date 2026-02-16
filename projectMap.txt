@@ -1,5 +1,6 @@
 ├── ...
 ├── .gitignore
+├── DB_MAP.md
 ├── INSTRUCTIONS_OAUTH.md
 ├── LOCKED_FILES.md
 ├── apply.js
@@ -46,9 +47,11 @@
 │   │   └── test_token_valid.txt
 │   ├── tailwind.config.cjs
 │   └── vite.config.js
+├── db-structure.js
 ├── git-auto.js
 ├── init-db.js
 ├── magic-paste.js
+├── mongodbview.js
 ├── package.json
 ├── projectMap.txt
 ├── public/
@@ -58,6 +61,7 @@
 │   │   ├── jumper.png
 │   │   └── ~$che_Croissance_Demographique_5e.docx
 │   └── style.css
+├── scan-all-db.js
 ├── server/
 │   ├── core/
 │   │   ├── ai.engine.js

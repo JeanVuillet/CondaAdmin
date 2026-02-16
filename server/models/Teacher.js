@@ -11,23 +11,19 @@ const SectionSchema = new mongoose.Schema({
 const TeacherSchema = new mongoose.Schema({
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
-    password: { type: String, required: true },
+    password: { type: String, required: true }, // ⚠️ PAS DE HOOK ICI. Géré par le contrôleur.
     subjectSections: { type: [SectionSchema], default: [] },
     
-    // Références (IDs)
     taughtSubjects: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Subject' }],
     assignedClasses: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Classroom' }],
-
-    // ✅ NOUVELLES COLONNES : Texte en toutes lettres (Dénormalisation)
-    taughtSubjectsText: { type: String, default: "" },  // ex: "MATHS, PHYSIQUE"
-    assignedClassesText: { type: String, default: "" }, // ex: "6A, 5B, 6A ANGLAIS"
+    taughtSubjectsText: { type: String, default: "" },  
+    assignedClassesText: { type: String, default: "" }, 
 
     isDeveloper: { type: Boolean, default: false },
     driveFolderId: { type: String },
     isTestAccount: { type: Boolean, default: false }
 }, { collection: 'teachers' });
 
-// 🛡️ CONTRAINTE D'UNICITÉ : Le couple Prénom + Nom doit être unique
 TeacherSchema.index({ firstName: 1, lastName: 1 }, { unique: true });
 
 module.exports = mongoose.models.Teacher || mongoose.model('Teacher', TeacherSchema);

@@ -1,6 +1,7 @@
 STRUCTURE:
 ├── ...
 ├── .gitignore
+├── DB_MAP.md
 ├── INSTRUCTIONS_OAUTH.md
 ├── LOCKED_FILES.md
 ├── apply.js
@@ -47,9 +48,11 @@ STRUCTURE:
 │   │   └── test_token_valid.txt
 │   ├── tailwind.config.cjs
 │   └── vite.config.js
+├── db-structure.js
 ├── git-auto.js
 ├── init-db.js
 ├── magic-paste.js
+├── mongodbview.js
 ├── package.json
 ├── projectMap.txt
 ├── public/
@@ -59,6 +62,7 @@ STRUCTURE:
 │   │   ├── jumper.png
 │   │   └── ~$che_Croissance_Demographique_5e.docx
 │   └── style.css
+├── scan-all-db.js
 ├── server/
 │   ├── core/
 │   │   ├── ai.engine.js
@@ -106,6 +110,156 @@ STRUCTURE:
 
 
 CODE:
+
+[[[£ FILE: DB_MAP.md £]]]
+# 🗺️ STRUCTURE DE LA BASE DE DONNÉES
+Généré le : 2/15/2026, 10:34:41 AM
+
+## 📦 Collection : `academicyears` (Model: AcademicYear)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **isCurrent** | `Boolean` | Def: true |
+| **label** | `String` | ✅ REQ |
+
+---
+
+## 📦 Collection : `accesslogs` (Model: AccessLog)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **action** | `String` | - |
+| **timestamp** | `Date` | Def: (func) |
+| **userId** | `String` | - |
+
+---
+
+## 📦 Collection : `admins` (Model: Admin)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **email** | `String` | ✅ REQ, 🔑 UNIQUE |
+| **firstName** | `String` | ✅ REQ |
+| **isDeveloper** | `Boolean` | Def: false |
+| **isTestAccount** | `Boolean` | Def: false |
+| **lastName** | `String` | ✅ REQ |
+| **password** | `String` | ✅ REQ |
+| **role** | `String` | Def: admin, Enum: [admin, developer] |
+| **subjectSections** | `[Mixed/Object]` | Def:  |
+
+---
+
+## 📦 Collection : `bugreports` (Model: BugReport)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **createdAt** | `Date` | Def: (func) |
+| **description** | `String` | - |
+| **stack** | `String` | - |
+| **status** | `String` | Def: open |
+
+---
+
+## 📦 Collection : `classrooms` (Model: Classroom)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **associatedClasses** | `[🔗 Ref(Classroom)]` | - |
+| **layout** | `Embedded` | Def: (func) |
+| **level** | `String` | - |
+| **name** | `String` | ✅ REQ, 🔑 UNIQUE |
+| **type** | `String` | Def: CLASS, Enum: [CLASS, GROUP] |
+| **yearId** | `ObjectId` | - |
+
+---
+
+## 📦 Collection : `deploysignals` (Model: DeploySignal)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **status** | `String` | - |
+| **updatedAt** | `Date` | - |
+
+---
+
+## 📦 Collection : `enrollments` (Model: Enrollment)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **classId** | `ObjectId` | ✅ REQ |
+| **studentId** | `ObjectId` | ✅ REQ |
+| **yearId** | `ObjectId` | ✅ REQ |
+
+---
+
+## 📦 Collection : `projectdocs` (Model: ProjectDoc)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **description** | `String` | - |
+| **fileName** | `String` | 🔑 UNIQUE |
+
+---
+
+## 📦 Collection : `students` (Model: Student)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **activePunishmentId** | `ObjectId` | - |
+| **assignedGroups** | `[🔗 Ref(Classroom)]` | - |
+| **behaviorRecords** | `[Mixed/Object]` | Def:  |
+| **birthDate** | `String` | Def:  |
+| **classId** | `ObjectId` | - |
+| **currentClass** | `String` | - |
+| **currentLevel** | `String` | - |
+| **email** | `String` | - |
+| **firstName** | `String` | ✅ REQ |
+| **fullName** | `String` | - |
+| **gender** | `String` | Def: M, Enum: [M, F] |
+| **hasReward** | `Boolean` | Def: false |
+| **isTestAccount** | `Boolean` | Def: false |
+| **lastLogin** | `Date` | Def: (func) |
+| **lastName** | `String` | ✅ REQ |
+| **parentEmail** | `String` | - |
+| **password** | `String` | Def: 123456 |
+| **punishmentDueDate** | `Date` | - |
+| **punishmentStatus** | `String` | Def: NONE, Enum: [NONE, PENDING, LATE, DONE] |
+| **seatX** | `Number` | Def: 0 |
+| **seatY** | `Number` | Def: 0 |
+| **teacherNotes** | `[Mixed/Object]` | Def:  |
+
+---
+
+## 📦 Collection : `subjects` (Model: Subject)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **color** | `String` | Def: #6366f1 |
+| **icon** | `String` | - |
+| **name** | `String` | ✅ REQ, 🔑 UNIQUE |
+
+---
+
+## 📦 Collection : `teachers` (Model: Teacher)
+| Champ | Type | Options |
+| :--- | :--- | :--- |
+| **_id** | `ObjectId` | - |
+| **assignedClasses** | `[🔗 Ref(Classroom)]` | - |
+| **assignedClassesText** | `String` | Def:  |
+| **driveFolderId** | `String` | - |
+| **firstName** | `String` | ✅ REQ |
+| **isDeveloper** | `Boolean` | Def: false |
+| **isTestAccount** | `Boolean` | Def: false |
+| **lastName** | `String` | ✅ REQ |
+| **password** | `String` | ✅ REQ |
+| **subjectSections** | `[Mixed/Object]` | Def:  |
+| **taughtSubjects** | `[🔗 Ref(Subject)]` | - |
+| **taughtSubjectsText** | `String` | Def:  |
+
+---
+
+
+[[[£ END: DB_MAP.md £]]]
 
 [[[£ FILE: INSTRUCTIONS_OAUTH.md £]]]
 # 🔐 RÉPARER L'ERREUR INVALID_GRANT
@@ -205,7 +359,7 @@ setInterval(applyUpdate, 1500);
 {
   "status": "OK",
   "file": null,
-  "timestamp": 1770931624518
+  "timestamp": 1771254621716
 }
 [[[£ END: apply_status.json £]]]
 
@@ -813,6 +967,25 @@ export default function AdminDashboard({ user }) {
              }
         }
 
+        // ✅ VALIDATION ADMIN : EMAIL OBLIGATOIRE + UNICITÉ NOM/PRÉNOM
+        if (view === 'administrateurs') {
+            // 1. Email Check
+            if (!dataToSend.email || !dataToSend.email.includes('@')) {
+                return alert("⚠️ L'email est obligatoire et doit être valide pour un administrateur.");
+            }
+
+            // 2. Nom+Prénom Check (Client-Side)
+            const duplicateName = items.find(admin => 
+                admin._id !== dataToSend._id && // On ne se compare pas à soi-même en édition
+                admin.firstName.trim().toLowerCase() === dataToSend.firstName.trim().toLowerCase() &&
+                admin.lastName.trim().toLowerCase() === dataToSend.lastName.trim().toLowerCase()
+            );
+
+            if (duplicateName) {
+                return alert(`⛔ ERREUR : Un administrateur nommé "${dataToSend.firstName} ${dataToSend.lastName}" existe déjà.`);
+            }
+        }
+
         if (view === 'groups') dataToSend.type = 'GROUP'; 
 
         try {
@@ -824,7 +997,12 @@ export default function AdminDashboard({ user }) {
             const result = await res.json();
             
             if (result.error || result.code === 11000) {
-                alert("❌ ERREUR : Cet élément existe déjà (Doublon Prénom+Nom ou Email).");
+                // Gestion fine des doublons remontés par le serveur
+                if (result.keyPattern && result.keyPattern.email) {
+                    alert("❌ ERREUR : Cet email est déjà utilisé par un autre administrateur.");
+                } else {
+                    alert("❌ ERREUR : Cet élément existe déjà (Doublon Prénom+Nom ou Email).");
+                }
             } else {
                 setModalMode(null); loadData();
             }
@@ -871,10 +1049,10 @@ export default function AdminDashboard({ user }) {
         const file = e.target.files[0];
         if (!file || !targetImportClass) return;
 
-        // 1. VERIF NOM FICHIER (Stricte "Classe.csv" ou "Classe.xlsx")
         const classObj = allClasses.find(c => c._id === targetImportClass);
         const targetClassName = classObj ? classObj.name.toUpperCase().trim() : "SANS CLASSE";
         
+        // 1. VERIF NOM FICHIER
         if (!file.name.toUpperCase().includes(targetClassName)) {
             alert(`⛔ FICHIER REJETÉ.\n\nRègle : Le fichier doit contenir "${targetClassName}" dans son nom.\nFichier actuel : ${file.name}`);
             e.target.value = ""; 
@@ -896,55 +1074,108 @@ export default function AdminDashboard({ user }) {
                 const headerLineIndex = 0; 
                 const headerLineRaw = lines[headerLineIndex];
 
-                // 2. DÉTECTION AUTO SÉPARATEUR
+                // 2. DÉTECTION SÉPARATEUR
                 const countSemi = (headerLineRaw.match(/;/g) || []).length;
                 const countComma = (headerLineRaw.match(/,/g) || []).length;
                 const separator = countSemi >= countComma ? ';' : ',';
-                
                 setMagicLog(`⚙️ Séparateur : "${separator}"`);
 
                 const headers = headerLineRaw.split(separator).map(h => normalizeHeader(h));
-                setMagicLog(`📋 Colonnes trouvées : ${headers.join(' | ')}\n`);
+                setMagicLog(`📋 En-têtes détectés : ${headers.length} colonnes`);
 
-                // 3. MAPPING STRICT SELON LES RÈGLES
+                // 3. MAPPING DES COLONNES
                 const map = {
                     email: headers.findIndex(h => h.includes('email') || h.includes('mail')),
                     fullname: headers.findIndex(h => h.includes('eleve') || h.includes('nom complet')),
                     sex: headers.findIndex(h => h.includes('sexe') || h.includes('genre')),
                     birthDate: headers.findIndex(h => h.includes('ne(e) le') || h.includes('ne le') || h.includes('naissance')),
-                    
-                    // RÈGLES STRICTES COLONNES M(12), N(13), O(14), P(15)
-                    opt1: headers.findIndex(h => h.includes('option 1') || h.includes('groupe 1')),
-                    opt2: headers.findIndex(h => h.includes('option 2') || h.includes('groupe 2')),
-                    opt3: headers.findIndex(h => h.includes('option 3') || h.includes('groupe 3')),
-                    opt4: headers.findIndex(h => h.includes('option 4') || h.includes('groupe 4') || h.includes('autre'))
                 };
 
-                // FORCE LES COLONNES M, N, O, P SI NON TROUVÉES VIA HEADER
-                if (map.opt1 === -1) map.opt1 = 12;
-                if (map.opt2 === -1) map.opt2 = 13;
-                if (map.opt3 === -1) map.opt3 = 14;
-                if (map.opt4 === -1) map.opt4 = 15;
+                // RECHERCHE COLONNES GROUPES (M, N, O, P) - Indices 12, 13, 14, 15
+                const groupCols = [12, 13, 14]; // M, N, O toujours inclus
+                
+                // CONDITION POUR LA COLONNE P (15) : Seulement si titre = "Autres options"
+                if (headers[15] && headers[15].includes('autre')) {
+                    groupCols.push(15);
+                    setMagicLog(`✅ Colonne P (Autres options) détectée et activée.`);
+                } else {
+                    setMagicLog(`ℹ️ Colonne P ignorée (Titre non conforme : "${headers[15] || 'Vide'}")`);
+                }
 
                 if (map.email === -1) throw new Error("Colonne 'Email' introuvable (Requise pour nom/prénom).");
 
-                setMagicLog(`🎯 Classe Cible : ${targetClassName}`);
-                
-                let successCount = 0;
-                let updateCount = 0;
-                let errorCount = 0;
-                
+                // --- PHASE 1 : ANALYSE ET CRÉATION DES GROUPES MANQUANTS ---
+                setMagicLog(`\n🔎 ANALYSE DES GROUPES REQUIS...`);
+                const rowsToProcess = [];
+                const neededGroups = new Set();
+
                 for (let i = headerLineIndex + 1; i < lines.length; i++) {
                     const lineStr = lines[i];
                     if (!lineStr || lineStr.trim() === "") continue;
-
                     const cols = lineStr.split(separator).map(c => c.trim().replace(/"/g, ''));
+                    
+                    const rowGroupNames = [];
+                    
+                    groupCols.forEach(idx => {
+                        const cellContent = cols[idx];
+                        if(cellContent && cellContent.length > 1) {
+                            // Split par virgule si plusieurs groupes dans une case
+                            const parts = cellContent.split(',');
+                            parts.forEach(part => {
+                                const cleanOptionName = part.trim().toUpperCase();
+                                if(cleanOptionName) {
+                                    // CONSTRUCTION : CLASSE + " " + GROUPE
+                                    const fullGroupName = `${targetClassName} ${cleanOptionName}`;
+                                    neededGroups.add(fullGroupName);
+                                    rowGroupNames.push(fullGroupName);
+                                }
+                            });
+                        }
+                    });
+                    rowsToProcess.push({ cols, rowGroupNames });
+                }
 
-                    // --- A. PARSING IDENTITÉ ---
+                // Récupération ID des groupes existants
+                const groupNameIdMap = {};
+                allClasses.filter(c => c.type === 'GROUP').forEach(g => groupNameIdMap[g.name] = g._id);
+
+                let groupsCreated = 0;
+                // Création des manquants
+                for (const gName of neededGroups) {
+                    if (!groupNameIdMap[gName]) {
+                        try {
+                            setMagicLog(`🏗️ Création Groupe : ${gName}`);
+                            const res = await fetch('/api/admin/classrooms', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({ name: gName, type: 'GROUP' })
+                            });
+                            const newGroup = await res.json();
+                            if (newGroup._id) {
+                                groupNameIdMap[gName] = newGroup._id;
+                                groupsCreated++;
+                            }
+                        } catch(e) { console.error(e); }
+                    }
+                }
+                if(groupsCreated > 0) setMagicLog(`✅ ${groupsCreated} nouveaux groupes créés en base.`);
+
+                // --- PHASE 2 : SIMULATION & VALIDATION (TOLÉRANCE ZÉRO) ---
+                setMagicLog(`\n🛡️ SCAN ANTI-DOUBLONS EN COURS...`);
+                
+                const preparedPayloads = [];
+                const duplicateErrors = [];
+                const localEmailSet = new Set(); // Pour doubons internes au fichier
+                const localNameSet = new Set();
+
+                for (const row of rowsToProcess) {
+                    const cols = row.cols;
+                    const assignedGroups = row.rowGroupNames.map(name => groupNameIdMap[name]).filter(id => id);
+
+                    // --- PARSING IDENTITÉ ---
                     let email = cols[map.email] ? cols[map.email].toLowerCase() : "";
                     if (!email || !email.includes('@')) continue; 
 
-                    // RÈGLE : LastName = partie 1 email, FirstName = partie 2
                     let firstName = "Prénom";
                     let lastName = "NOM";
                     try {
@@ -959,84 +1190,75 @@ export default function AdminDashboard({ user }) {
                         }
                     } catch(e) {}
 
-                    // RÈGLE : Fullname de la colonne ou concat
                     let fullName = (map.fullname !== -1 && cols[map.fullname]) ? cols[map.fullname] : `${lastName} ${firstName}`;
-
-                    // --- B. PARSING ATTRIBUTS ---
-                    // RÈGLE : Gender = 1ère lettre
+                    
+                    // --- ATTRUBUTS ---
                     let gender = 'M';
                     if (map.sex !== -1 && cols[map.sex]) {
                         const firstChar = cols[map.sex].charAt(0).toUpperCase();
                         if (firstChar === 'F' || firstChar === 'W') gender = 'F';
                     }
 
-                    // 📅 RÈGLE : Password = BirthDate format JJMMAAAA
+                    // --- DATES ---
                     let birthDate = (map.birthDate !== -1 && cols[map.birthDate]) ? cols[map.birthDate].trim() : "";
                     let password = "123456"; 
-                    
                     if (birthDate) {
-                        // Tentative de formatage strict JJMMAAAA (01012000)
                         const parts = birthDate.split(/[\/\-\.]/);
                         if (parts.length === 3) {
                             const d = parts[0].trim().padStart(2, '0');
                             const m = parts[1].trim().padStart(2, '0');
-                            // Si année format YY (ex: 05), on ajoute 20
                             let y = parts[2].trim();
                             if(y.length === 2) y = "20" + y;
-                            
                             password = `${d}${m}${y}`;
-                            birthDate = `${d}/${m}/${y}`; // Standardize display
+                            birthDate = `${d}/${m}/${y}`;
                         } else {
-                            // Fallback
                             const digits = birthDate.replace(/[^0-9]/g, '');
                             if (digits.length >= 6) password = digits; 
                         }
                     }
 
-                    // --- C. PARSING GROUPES (Options M, N, O, P) ---
-                    // RÈGLE : "Classe + ' ' + Groupe" (ex: "1D ANGLAIS")
-                    let assignedGroups = [];
-                    const optionCols = [map.opt1, map.opt2, map.opt3, map.opt4].filter(idx => idx !== -1);
-                    
-                    optionCols.forEach(idx => {
-                        const val = cols[idx];
-                        if (val && val.length > 1) {
-                            // On gère si plusieurs groupes sont séparés par virgule (ex: "LATIN, CHORALE")
-                            const parts = val.split(/[,\/]/);
-                            parts.forEach(part => {
-                                const cleanOptionName = part.trim().toUpperCase();
-                                if (cleanOptionName) {
-                                    const constructedGroupName = `${targetClassName} ${cleanOptionName}`;
-                                    // Recherche ID du groupe existant
-                                    const grpObj = allClasses.find(c => c.type === 'GROUP' && c.name === constructedGroupName);
-                                    if (grpObj) {
-                                        assignedGroups.push(grpObj._id);
-                                    } else {
-                                        // Log warning pour le prof
-                                        // setMagicLog(`⚠️ Groupe ignoré (Inexistant) : ${constructedGroupName}`);
-                                    }
-                                }
-                            });
-                        }
-                    });
-
-                    // 🔎 RECHERCHE DOUBLON
-                    const existingStudent = allStudents.find(s => 
-                        s.email.toLowerCase() === email.toLowerCase() || 
-                        (s.lastName.toUpperCase() === lastName && s.firstName.toLowerCase() === firstName.toLowerCase())
+                    // 🛑 VÉRIFICATION DOUBLON EN BASE DE DONNÉES
+                    const dbDuplicate = allStudents.find(s => 
+                        (s.lastName.toUpperCase() === lastName && s.firstName.toLowerCase() === firstName.toLowerCase()) || 
+                        (s.email.toLowerCase() === email.toLowerCase())
                     );
+                    
+                    // 🛑 VÉRIFICATION DOUBLON INTERNE FICHIER
+                    const internalDupEmail = localEmailSet.has(email);
+                    const internalDupName = localNameSet.has(`${firstName.toLowerCase()}|${lastName.toUpperCase()}`);
 
-                    let payload = {
-                        firstName, lastName, fullName, email, password, 
-                        classId: targetImportClass, 
-                        currentClass: targetClassName, 
-                        assignedGroups, gender, birthDate 
-                    };
-
-                    if (existingStudent) {
-                        payload._id = existingStudent._id; 
+                    if (dbDuplicate || internalDupEmail || internalDupName) {
+                        const cause = dbDuplicate ? "(Existe déjà en base)" : "(Doublon dans le fichier)";
+                        duplicateErrors.push(`🔴 ${firstName} ${lastName} ${cause}`);
+                    } else {
+                        localEmailSet.add(email);
+                        localNameSet.add(`${firstName.toLowerCase()}|${lastName.toUpperCase()}`);
+                        
+                        preparedPayloads.push({
+                            firstName, lastName, fullName, email, password, 
+                            classId: targetImportClass, 
+                            currentClass: targetClassName, 
+                            assignedGroups, gender, birthDate 
+                        });
                     }
+                }
 
+                // --- POINT DE DÉCISION ---
+                if (duplicateErrors.length > 0) {
+                    setMagicLog(`\n⛔ IMPORT ANNULÉ : ${duplicateErrors.length} DOUBLONS DÉTECTÉS.`);
+                    setMagicLog(`\n--- LISTE DES ERREURS ---\n`);
+                    duplicateErrors.forEach(err => setMagicLog(err));
+                    setMagicLog(`\n⚠️ Veuillez nettoyer votre fichier ou la base de données avant de réessayer.`);
+                    return; // ⛔ STOP ICI, RIEN N'EST ENVOYÉ EN BASE
+                }
+
+                // --- PHASE 3 : EXÉCUTION RÉELLE (POST) ---
+                setMagicLog(`\n🟢 VALIDATION OK. CRÉATION DE ${preparedPayloads.length} ÉLÈVES...`);
+                
+                let successCount = 0;
+                let errorCount = 0;
+
+                for (const payload of preparedPayloads) {
                     try {
                         const res = await fetch('/api/admin/students', {
                             method: 'POST',
@@ -1044,23 +1266,22 @@ export default function AdminDashboard({ user }) {
                             body: JSON.stringify(payload)
                         });
                         const data = await res.json();
-                        
                         if (data.error || data.code === 11000) {
                             errorCount++;
+                            setMagicLog(`❌ Erreur technique sur ${payload.firstName} ${payload.lastName}`);
                         } else {
-                            if (existingStudent) updateCount++; else successCount++;
+                            successCount++;
                         }
                     } catch (err) { errorCount++; }
                     
-                    if((successCount + updateCount) % 10 === 0) setMagicLog(`... ${successCount + updateCount} traités`);
+                    if((successCount + errorCount) % 5 === 0) setMagicLog(`... ${successCount + errorCount} traités`);
                 }
 
-                setMagicLog(`\n🎉 TERMINÉ : ${successCount} créés, ${updateCount} mis à jour.`);
-                if (errorCount > 0) setMagicLog(`⚠️ ${errorCount} erreurs (Doublons/Invalides).`);
+                setMagicLog(`\n🏁 RAPPORT FINAL :\n- Ajoutés : ${successCount}\n- Échecs techniques : ${errorCount}`);
 
                 e.target.value = ""; 
                 setTimeout(() => {
-                    if (confirm(`Import terminé.\n\nCréés: ${successCount}\nMis à jour: ${updateCount}\n\nRecharger la liste ?`)) {
+                    if (confirm(`SUCCÈS.\n\n${successCount} élèves importés.\n\nRecharger la liste ?`)) {
                         setShowMagicModal(false); setMagicLog(""); loadData();
                     }
                 }, 1000);
@@ -1155,8 +1376,9 @@ export default function AdminDashboard({ user }) {
             </div>
 
             {/* ... MODALES (ZOOM, VIEW, EDIT) ... */}
+            {/* ✅ CORRECTION : Z-INDEX AUGMENTÉ À 60 POUR PASSER AU DESSUS DE LA LISTE */}
             {zoomedItem && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setZoomedItem(null)}>
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4" onClick={() => setZoomedItem(null)}>
                     <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
                         <div className="bg-indigo-600 p-6 text-white text-center">
                             <div className="text-4xl mb-2">{zoomedItem.gender === 'F' ? '👩' : '👨'}</div>
@@ -1196,19 +1418,36 @@ export default function AdminDashboard({ user }) {
                             <h3 className="font-black text-lg uppercase text-slate-700">LISTE {viewingClass.name}</h3>
                             <button onClick={() => setViewingClass(null)} className="text-slate-400 hover:text-red-500 font-black">✕</button>
                         </div>
-                        <div className="p-0 h-96 overflow-y-auto">
-                             {allStudents.filter(s => String(s.classId) === String(viewingClass._id) || (s.assignedGroups || []).includes(viewingClass._id))
-                                .sort((a,b) => a.lastName.localeCompare(b.lastName))
-                                .map(s => (
-                                    <div key={s._id} className="p-4 border-b hover:bg-slate-50 flex justify-between items-center">
-                                        <div>
-                                            <div className="font-bold text-slate-700">{s.lastName} {s.firstName}</div>
-                                            <div className="text-[10px] text-slate-400 font-mono">{s.birthDate} • {s.gender}</div>
-                                        </div>
-                                        <span className="text-xs font-mono text-slate-400">{s.email}</span>
-                                    </div>
-                                ))
-                             }
+                        
+                        <div className="p-4 h-96 overflow-y-auto bg-slate-50">
+                             {allStudents.filter(s => {
+                                 const targetId = String(viewingClass._id);
+                                 // Vérification Classe Principale
+                                 const mainClassMatch = String(s.classId) === targetId;
+                                 // Vérification Groupes (Safe array check)
+                                 const groupsMatch = Array.isArray(s.assignedGroups) && s.assignedGroups.map(String).includes(targetId);
+                                 return mainClassMatch || groupsMatch;
+                             })
+                             .sort((a,b) => a.lastName.localeCompare(b.lastName))
+                             .map(s => (
+                                 <div key={s._id} className="item-card !p-4 !mb-2 !shadow-sm hover:!bg-white flex justify-between items-center">
+                                     <div className="item-main">
+                                         <span className="item-title text-sm">
+                                             {s.gender === 'F' ? '👩' : '👨'} {s.lastName} {s.firstName}
+                                         </span>
+                                         <span className="item-sub text-xs">
+                                             {s.email}
+                                         </span>
+                                     </div>
+                                     <div className="item-actions">
+                                         <button onClick={() => setZoomedItem(s)} className="btn-action bg-cyan-50 text-cyan-600">🔍</button>
+                                     </div>
+                                 </div>
+                             ))}
+                             
+                             {allStudents.filter(s => String(s.classId) === String(viewingClass._id) || (s.assignedGroups || []).map(String).includes(String(viewingClass._id))).length === 0 && (
+                                 <div className="text-center text-slate-400 font-bold italic mt-10">Aucun élève dans ce groupe/classe.</div>
+                             )}
                         </div>
                     </div>
                 </div>
@@ -2001,6 +2240,110 @@ export default defineConfig({
 })
 [[[£ END: client/vite.config.js £]]]
 
+[[[£ FILE: db-structure.js £]]]
+const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
+require('dotenv').config();
+
+const MODELS_DIR = path.join(__dirname, 'server', 'models');
+const OUTPUT_FILE = 'DB_MAP.md';
+
+console.log("------------------------------------------------");
+console.log("🗺️  CARTOGRAPHIE DE LA BASE DE DONNÉES (MONGOOSE)");
+console.log("------------------------------------------------");
+
+async function generateMap() {
+    // 1. Chargement des modèles
+    if (fs.existsSync(MODELS_DIR)) {
+        fs.readdirSync(MODELS_DIR).forEach(file => {
+            if (file.endsWith('.js')) {
+                try {
+                    require(path.join(MODELS_DIR, file));
+                    console.log(`   📄 Modèle chargé : ${file}`);
+                } catch (e) {
+                    console.error(`   ❌ Erreur chargement ${file}:`, e.message);
+                }
+            }
+        });
+    } else {
+        console.error("❌ Dossier server/models introuvable !");
+        return;
+    }
+
+    // 2. Analyse de la structure
+    const modelNames = mongoose.modelNames().sort();
+    let markdown = `# 🗺️ STRUCTURE DE LA BASE DE DONNÉES\n`;
+    markdown += `Généré le : ${new Date().toLocaleString()}\n\n`;
+
+    console.log(`\n🔍 Analyse de ${modelNames.length} collections...\n`);
+
+    modelNames.forEach(modelName => {
+        const Model = mongoose.model(modelName);
+        const collectionName = Model.collection.name;
+        const schema = Model.schema;
+
+        markdown += `## 📦 Collection : \`${collectionName}\` (Model: ${modelName})\n`;
+        markdown += `| Champ | Type | Options |\n`;
+        markdown += `| :--- | :--- | :--- |\n`;
+
+        // Parcours des chemins du schéma
+        Object.keys(schema.paths).sort().forEach(path => {
+            if (path === '__v') return; // On ignore la version key interne
+
+            const pathType = schema.paths[path];
+            let type = pathType.instance;
+            let options = [];
+
+            // Détection des références (Foreign Keys)
+            if (type === 'ObjectID' && pathType.options.ref) {
+                type = `🔗 Ref(${pathType.options.ref})`;
+            }
+            
+            // Détection des Array
+            if (type === 'Array') {
+                if (pathType.caster && pathType.caster.instance) {
+                    type = `[${pathType.caster.instance}]`;
+                    if (pathType.caster.options.ref) {
+                         type = `[🔗 Ref(${pathType.caster.options.ref})]`;
+                    }
+                } else {
+                    type = `[Mixed/Object]`;
+                }
+            }
+
+            // Options intéressantes
+            if (pathType.options.required) options.push("✅ REQ");
+            if (pathType.options.unique) options.push("🔑 UNIQUE");
+            if (pathType.options.default !== undefined) {
+                let def = pathType.options.default;
+                if (typeof def === 'function') def = "(func)";
+                options.push(`Def: ${def}`);
+            }
+            if (pathType.options.enum) options.push(`Enum: [${pathType.options.enum.join(', ')}]`);
+
+            markdown += `| **${path}** | \`${type}\` | ${options.join(', ') || '-'} |\n`;
+        });
+        
+        markdown += `\n---\n\n`;
+    });
+
+    // 3. Écriture du fichier
+    try {
+        fs.writeFileSync(OUTPUT_FILE, markdown);
+        console.log(`✅ SUCCÈS : Fichier généré -> ${OUTPUT_FILE}`);
+        console.log(`   Vous pouvez ouvrir ce fichier pour voir toute la structure.`);
+    } catch (e) {
+        console.error("❌ Erreur écriture fichier:", e.message);
+    }
+
+    // On quitte proprement (pas besoin de connexion DB réelle pour lire les schémas)
+    process.exit(0);
+}
+
+generateMap();
+[[[£ END: db-structure.js £]]]
+
 [[[£ FILE: git-auto.js £]]]
 const { exec } = require('child_process');
 const fs = require('fs');
@@ -2060,6 +2403,10 @@ setInterval(async () => {
 }, 2000);
 [[[£ END: magic-paste.js £]]]
 
+[[[£ FILE: mongodbview.js £]]]
+
+[[[£ END: mongodbview.js £]]]
+
 [[[£ FILE: package.json £]]]
 {
   "name": "condamine-admin",
@@ -2074,16 +2421,18 @@ setInterval(async () => {
   },
   "dependencies": {
     "@google/generative-ai": "^0.1.3",
+    "bcryptjs": "^3.0.3",
+    "clipboardy": "^4.0.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "googleapis": "^126.0.0",
     "mongoose": "7.8.2",
-    "node-fetch": "^2.7.0",
     "multer": "^1.4.5-lts.1",
-    "clipboardy": "^4.0.0",
+    "node-fetch": "^2.7.0",
     "nodemon": "^3.0.3"
   }
 }
+
 [[[£ END: package.json £]]]
 
 [[[£ FILE: public/style.css £]]]
@@ -2141,6 +2490,71 @@ header h1 { font-size: 1.3rem; color: var(--primary); margin: 0; }
 .correction-table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; border-radius: 10px; overflow: hidden; }
 .correction-table td { padding: 8px; border-bottom: 1px solid #eee; }
 [[[£ END: public/style.css £]]]
+
+[[[£ FILE: scan-all-db.js £]]]
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+console.log("------------------------------------------------");
+console.log("🕵️‍♂️ SCANNER PROFOND MONGODB (Lecture Directe)");
+console.log("------------------------------------------------");
+
+async function scanDB() {
+    if (!process.env.MONGODB_URI) {
+        console.error("❌ Erreur : MONGODB_URI manquant dans le fichier .env");
+        process.exit(1);
+    }
+
+    try {
+        // 1. Connexion
+        console.log("🔌 Connexion à la base de données...");
+        await mongoose.connect(process.env.MONGODB_URI);
+        console.log("✅ Connecté.");
+
+        const db = mongoose.connection.db;
+
+        // 2. Récupération de la liste brute des collections
+        const collections = await db.listCollections().toArray();
+        const sortedCollections = collections.map(c => c.name).sort();
+
+        console.log(`\n📦 ${sortedCollections.length} COLLECTIONS TROUVÉES :\n`);
+
+        for (const name of sortedCollections) {
+            // Ignorer les collections systèmes internes
+            if (name.startsWith('system.')) continue;
+
+            // Compter les documents
+            const count = await db.collection(name).countDocuments();
+            
+            // Récupérer un document pour deviner la structure
+            const sample = await db.collection(name).findOne({});
+            
+            console.log(`📂 COLLECTION : [ ${name.toUpperCase()} ] (${count} documents)`);
+            
+            if (sample) {
+                const keys = Object.keys(sample).filter(k => k !== '__v' && k !== '_id');
+                console.log(`   🔑 Champs détectés : ${keys.join(', ')}`);
+                
+                // Détection de champs spéciaux souvent invisibles
+                if (sample.createdAt) console.log(`   🕒 TimeStamp: Oui`);
+                if (sample.fileId || sample.gridFsId) console.log(`   💾 Fichiers liés: Oui`);
+            } else {
+                console.log(`   ⚠️ Collection vide (Structure inconnue)`);
+            }
+            console.log("   " + "-".repeat(40));
+        }
+
+        console.log("\n✨ Scan terminé.");
+        process.exit(0);
+
+    } catch (e) {
+        console.error("❌ ERREUR FATALE :", e);
+        process.exit(1);
+    }
+}
+
+scanDB();
+[[[£ END: scan-all-db.js £]]]
 
 [[[£ FILE: server/core/ai.engine.js £]]]
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require("@google/generative-ai");
@@ -3000,14 +3414,20 @@ const SectionSchema = new mongoose.Schema({
 }, { _id: false });
 
 const AdminSchema = new mongoose.Schema({
-    firstName: { type: String, required: true },
-    lastName: { type: String, required: true },
+    firstName: { type: String, required: true, trim: true },
+    lastName: { type: String, required: true, trim: true, uppercase: true },
+    // ✅ AJOUT : Email obligatoire et unique
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
     role: { type: String, enum: ['admin', 'developer'], default: 'admin' },
     subjectSections: { type: [SectionSchema], default: [] },
     isDeveloper: { type: Boolean, default: false },
     isTestAccount: { type: Boolean, default: false }
 }, { collection: 'admins' });
+
+// 🛡️ SÉCURITÉ : Index Unique sur Prénom + Nom ET sur Email
+AdminSchema.index({ firstName: 1, lastName: 1 }, { unique: true });
+AdminSchema.index({ email: 1 }, { unique: true });
 
 module.exports = mongoose.models.Admin || mongoose.model('Admin', AdminSchema);
 [[[£ END: server/models/Admin.js £]]]
@@ -3375,10 +3795,11 @@ C'est la base de données et la structure de l'établissement.
 Fonctionnalités Sanctuarisées (À ne pas casser) :
 
 Gestion Utilisateurs admin uniquement.
-Créer/Modifier/visualiser/Supprimer un Admin (Nom, Prénom, Email,Password ).l'ensemble Prénom + Nom doit être une clé unique.
+Toute nouvelle connection doit commencer par la fenêtre d'authentification
+Créer/Modifier/visualiser/Supprimer un Admin (Nom, Prénom, Email,Password ).l'ensemble Prénom + Nom doit être une clé unique. Les password doivent faire l'objet de hashage ( bcryptjs).
 Créer/Modifier/visualiser/Supprimer une classe (ex: 6A) . Le nom de la classe doit être une clé unique. Dans une classe voir la liste des élèves.
 Créer/Modifier/visualiser/Supprimer un groupe (ex: 3C LVA Anglais).Dans un groupe voir la liste des élèves.Le nom du groupe doit être une clé unique
-Créer/Modifier/visualiser/Supprimer un Professeur : Lui assigner ses Matières et ses Classes et ses Groupes (ex: 2A, 1D BFI).l'ensemble Prénom + Nom doit être une clé unique.
+Créer/Modifier/visualiser/Supprimer un Professeur : Définir  Email, nom = première partie du mail, prénom = deuxième partie du mail,password qui doit faire l'objet de hashage ( bcryptjs).Lui assigner ses Matières et ses Classes et ses Groupes (ex: 2A, 1D BFI).l'ensemble Prénom + Nom doit être une clé unique.
 Créer/Modifier/Visualiser/Supprimer un Élève : Définir son Nomcomplet, Email, nom = première partie du mail, prénom = deuxième partie du mail,Email Parents, Classe principale et ses Groupes (Options). l'ensemble Prénom + Nom doit être une clé unique.
 Importation Massive : Je peux importer des listes d'élèves a partir d'un fichier CSV dont le nom doit être Classe.cvs ( exemple "1D.csv"). Il faut vérifier que le nom du fichier correspond à la classe choisie. L'IA doit parser les colonnes automatiquement de la manière suivante :
 EMAIL à partir de la colonne Email
@@ -3389,7 +3810,7 @@ GENDER à partir de la première lettre de la colonne sexe
 BIRTHDATE à partir de la colonne "Né(e) le"
 PASSWORD initialiser avec BIRTHDATE au format jjmmaaaa
 CURRENTCLASS à partir de la classe choisie
-ASSIGNEDGROUPS : les groupes de l'élève sont à prendre dans les colonnes M (option 1), N (option 2), O (option 3), P ( Autres options). Les groupes sont séparés par des virgules et le code groupe se construit de la manière suivante : classe + " "+ groupe,  exemple "1D ANGLAIS". Si un groupe n'existe pas dans CLASSROOMS, il faut le créer.
+ASSIGNEDGROUPS : les groupes de l'élève sont à prendre dans les colonnes M (option 1), N (option 2), O (option 3), P seulement si le titre est "Autres options". Les groupes sont séparés par des virgules et le code groupe se construit de la manière suivante : classe + " "+ groupe,  exemple "1D ANGLAIS". Si un groupe n'existe pas dans CLASSROOMS, il faut le créer.
 A la fin de l'import, il faut un compte rendu pour signaler les erreurs.
 [[[£ END: systemInstructions.md £]]]
 
