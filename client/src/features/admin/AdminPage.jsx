@@ -12,7 +12,7 @@ export default function AdminPage({ user, onLogout }) {
         {/* --- IDENTITÉ --- */}
         <div className="flex items-center gap-6">
             <div className="admin-identity">
-                <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter leading-none">
+                <h1 className="text-xl font-black text-blue-600 uppercase tracking-tighter leading-none">
                     {user.firstName} {user.lastName}
                 </h1>
                 <div className="flex items-center gap-3 mt-1.5">
