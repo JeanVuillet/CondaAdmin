@@ -471,7 +471,63 @@ export default function AdminDashboard({ user }) {
                                     </span>
                                 </div>
                             )}
-                            {zoomedItem.taughtSubjectsText && (
+                            {view === 'teachers' && (
+                                <>
+                                    {(() => {
+                                        const assignedIds = Array.isArray(zoomedItem.assignedClasses) ? zoomedItem.assignedClasses.map(String) : [];
+                                        const assignedClassNames = allClasses
+                                            .filter(c => c.type === 'CLASS' && assignedIds.includes(String(c._id)))
+                                            .map(c => c.name)
+                                            .join(', ');
+                                        const assignedGroupNames = allClasses
+                                            .filter(c => c.type === 'GROUP' && assignedIds.includes(String(c._id)))
+                                            .map(c => c.name)
+                                            .join(', ');
+                                        const fallbackText = zoomedItem.assignedClassesText || '';
+                                        return (
+                                            <>
+                                    <div className="flex justify-between border-b pb-2">
+                                        <span className="text-slate-400 font-bold text-xs uppercase">Email</span>
+                                        <span className="font-black text-slate-800 text-right text-xs max-w-[220px] break-all">{zoomedItem.email || '-'}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b pb-2">
+                                        <span className="text-slate-400 font-bold text-xs uppercase">Nom</span>
+                                        <span className="font-black text-slate-800 text-right text-xs">{zoomedItem.lastName || '-'}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b pb-2">
+                                        <span className="text-slate-400 font-bold text-xs uppercase">Prénom</span>
+                                        <span className="font-black text-slate-800 text-right text-xs">{zoomedItem.firstName || '-'}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b pb-2">
+                                        <span className="text-slate-400 font-bold text-xs uppercase">Mot de passe</span>
+                                        <span className="font-black text-slate-800 text-right text-xs">•••••• (vide = inchangé)</span>
+                                    </div>
+                                    <div className="flex justify-between border-b pb-2">
+                                        <span className="text-slate-400 font-bold text-xs uppercase">Matières</span>
+                                        <span className="font-black text-slate-800 text-right text-xs max-w-[220px]">
+                                            {(Array.isArray(zoomedItem.taughtSubjects)
+                                                ? zoomedItem.taughtSubjects.map(sId => allSubjects.find(s => s._id === sId)?.name).filter(Boolean).join(', ')
+                                                : '') || zoomedItem.taughtSubjectsText || 'Aucune matière'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between border-b pb-2">
+                                        <span className="text-slate-400 font-bold text-xs uppercase">Classes</span>
+                                        <span className="font-black text-slate-800 text-right text-xs max-w-[220px]">
+                                            {assignedClassNames || (fallbackText && !assignedGroupNames ? fallbackText : '') || 'Aucune classe'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between border-b pb-2">
+                                        <span className="text-slate-400 font-bold text-xs uppercase">Groupes</span>
+                                        <span className="font-black text-slate-800 text-right text-xs max-w-[220px]">
+                                            {assignedGroupNames || 'Aucun groupe'}
+                                        </span>
+                                    </div>
+                                            </>
+                                        );
+                                    })()}
+                                </>
+                            )}
+                            {zoomedItem.taughtSubjectsText && view !== 'teachers' && (
                                 <div className="flex justify-between border-b pb-2">
                                     <span className="text-slate-400 font-bold text-xs uppercase">Matières</span>
                                     <span className="font-black text-slate-800 text-right text-xs max-w-[200px]">{zoomedItem.taughtSubjectsText}</span>
@@ -512,13 +568,22 @@ export default function AdminDashboard({ user }) {
                              })
                              .sort((a,b) => a.lastName.localeCompare(b.lastName))
                              .map(s => (
-                                 <div key={s._id} className="item-card !p-4 !mb-2 !shadow-sm hover:!bg-white flex justify-between items-center">
-                                     <div className="item-main">
-                                         <span className="item-title text-sm">
+                                 <div key={s._id} className="item-card !p-4 !mb-2 !shadow-sm hover:!bg-white flex justify-between items-center gap-3">
+                                     <div className="item-main flex-1 min-w-0">
+                                         <span className="item-title text-sm truncate">
                                              {s.gender === 'F' ? '👩' : '👨'} {s.lastName} {s.firstName}
                                          </span>
-                                         <span className="item-sub text-xs">{s.email}</span>
+                                         <span className="item-sub text-xs truncate">{s.email}</span>
                                      </div>
+                                     <button
+                                         onClick={(e) => {
+                                             e.stopPropagation();
+                                             setViewingClass(null);
+                                             setZoomedItem(s);
+                                         }}
+                                         className="btn-action !px-3 !py-2 bg-cyan-50 text-cyan-600 border border-cyan-100 hover:bg-cyan-500 hover:text-white shrink-0"
+                                         title="Zoom élève"
+                                     >🔍</button>
                                  </div>
                              ))}
                              {allStudents.filter(s => String(s.classId) === String(viewingClass._id) || (s.assignedGroups || []).map(String).includes(String(viewingClass._id))).length === 0 && (

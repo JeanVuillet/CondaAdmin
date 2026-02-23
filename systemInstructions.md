@@ -31,5 +31,5 @@ PASSWORD initialiser avec BIRTHDATE au format jjmmaaaa
 CURRENTCLASS à partir de la classe choisie
 ASSIGNEDGROUPS : les groupes de l'élève sont à prendre dans les colonnes M (option 1), N (option 2), O (option 3), P seulement si le titre est "Autres options". Les groupes sont séparés par des virgules et le code groupe se construit de la manière suivante : classe + " "+ groupe,  exemple "1D ANGLAIS". Si un groupe n'existe pas dans CLASSROOMS, il faut le créer.
 A la fin de l'import, il faut un compte rendu pour signaler les erreurs.
-bateau
+
 
