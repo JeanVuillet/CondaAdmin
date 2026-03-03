@@ -21,7 +21,9 @@ export default function AdminDashboard({ user }) {
     
     // Refs pour upload fichier
     const classCsvInputRef = useRef(null); 
+    const groupCsvInputRef = useRef(null);
     const [targetImportClass, setTargetImportClass] = useState(null); 
+    const [targetImportGroup, setTargetImportGroup] = useState(null);
 
     const [allClasses, setAllClasses] = useState([]);
     const [allSubjects, setAllSubjects] = useState([]);
@@ -78,6 +80,9 @@ export default function AdminDashboard({ user }) {
 
     const handleOpenEdit = (item) => {
         const safeItem = { ...item };
+        if (!Array.isArray(safeItem.taughtSubjects)) safeItem.taughtSubjects = [];
+        if (!Array.isArray(safeItem.assignedClasses)) safeItem.assignedClasses = [];
+        if (!Array.isArray(safeItem.assignedGroups)) safeItem.assignedGroups = [];
         // Sécurité : on vide le password pour ne pas écraser le hash
         if (view === 'administrateurs' || view === 'teachers') {
             safeItem.password = ''; 
@@ -111,6 +116,24 @@ export default function AdminDashboard({ user }) {
         setLoading(false);
     };
 
+    const handleClearGroupStudents = async (group) => {
+        if (!confirm(`⚠️ ATTENTION\n\nVous allez retirer le groupe ${group.name} de TOUS les élèves (champ ASSIGNEDGROUPS).\n\nConfirmer ?`)) return;
+        const check = prompt(`🔴 SÉCURITÉ : Tapez exactement "${group.name}" pour continuer.`);
+        if (check !== group.name) return alert("Annulé.");
+
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/admin/groups/${group._id}/clear-students`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Erreur serveur.");
+            alert(`✅ Groupe vidé : ${data.modifiedCount} élève(s) mis à jour.`);
+            loadData();
+        } catch (e) {
+            alert(`❌ ${e.message || "Erreur serveur."}`);
+        }
+        setLoading(false);
+    };
+
     const handleSave = async () => {
         if (modalMode === 'view') return; 
 
@@ -118,6 +141,10 @@ export default function AdminDashboard({ user }) {
         let dataToSend = { ...currentItem };
         
         if (view === 'teachers') {
+            if (!dataToSend.lastName || !dataToSend.firstName) {
+                return alert("Nom et Prénom obligatoires pour générer l'email.");
+            }
+            dataToSend.email = buildTeacherEmail(dataToSend.lastName, dataToSend.firstName);
             const subjects = Array.isArray(dataToSend.taughtSubjects) ? dataToSend.taughtSubjects : [];
             const classes = Array.isArray(dataToSend.assignedClasses) ? dataToSend.assignedClasses : [];
             dataToSend.taughtSubjectsText = allSubjects.filter(s => subjects.includes(s._id)).map(s => s.name).join(', ');
@@ -184,6 +211,25 @@ export default function AdminDashboard({ user }) {
             if (prenom) prenom = prenom.charAt(0).toUpperCase() + prenom.slice(1).toLowerCase();
             return { lastName: nom, firstName: prenom };
         } catch (e) { return null; }
+    };
+
+    const normalizeEmailToken = (value) => String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .toLowerCase();
+
+    const buildTeacherEmail = (lastName, firstName) => {
+        const nom = normalizeEmailToken(lastName);
+        const prenom = normalizeEmailToken(firstName);
+        if (!nom || !prenom) return '';
+        return `${nom}.${prenom}@condamine.edu.ec`;
+    };
+
+    const isGroupClassroom = (c) => String(c?.type || '').toUpperCase() === 'GROUP';
+    const isMainClassroom = (c) => {
+        const t = String(c?.type || '').toUpperCase();
+        return t === 'CLASS' || t === '';
     };
 
     // --- 📥 IMPORT CSV ---
@@ -353,7 +399,71 @@ export default function AdminDashboard({ user }) {
                     }
                 }, 1000);
             } catch (err) { setMagicLog(`❌ ERREUR FATALE : ${err.message}`); }
+            setImporting(false);
             e.target.value = "";
+        };
+        reader.readAsText(file);
+    };
+
+    const triggerGroupImport = (groupId) => {
+        setTargetImportGroup(groupId);
+        setTimeout(() => { if (groupCsvInputRef.current) groupCsvInputRef.current.click(); }, 50);
+    };
+
+    const handleGroupFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (!file || !targetImportGroup) return;
+
+        const groupObj = allClasses.find(c => c._id === targetImportGroup && c.type === 'GROUP');
+        if (!groupObj) {
+            alert("Groupe introuvable.");
+            e.target.value = "";
+            return;
+        }
+
+        setImporting(true);
+        setShowMagicModal(true);
+        setMagicLog(`📂 Import du groupe "${groupObj.name}"...\nVérification du fichier : ${file.name}`);
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const csvText = evt.target.result;
+                const res = await fetch(`/api/admin/groups/${targetImportGroup}/import-csv`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileName: file.name, csvText })
+                });
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || "Erreur serveur.");
+
+                const notFoundLines = (result.notFound || [])
+                    .map(x => `Ligne ${x.row}: ${x.firstName} ${x.lastName}`)
+                    .join('\n');
+                setMagicLog(
+                    `✅ Import terminé (${result.groupName}).\n` +
+                    `Lignes lues : ${result.importedRows}\n` +
+                    `Élèves affectés : ${result.assignedCount}\n` +
+                    `Introuvables : ${result.notFoundCount}` +
+                    (notFoundLines ? `\n\nDétails (max 20):\n${notFoundLines}` : '')
+                );
+
+                setTimeout(() => {
+                    alert(
+                        `Import groupe terminé.\n` +
+                        `Élèves affectés : ${result.assignedCount}\n` +
+                        `Introuvables : ${result.notFoundCount}`
+                    );
+                    setShowMagicModal(false);
+                    loadData();
+                }, 700);
+            } catch (err) {
+                setMagicLog(`❌ Import impossible : ${err.message}`);
+                setTimeout(() => alert(`❌ ${err.message}`), 100);
+            } finally {
+                setImporting(false);
+                e.target.value = "";
+            }
         };
         reader.readAsText(file);
     };
@@ -364,9 +474,38 @@ export default function AdminDashboard({ user }) {
         return searchMatch;
     });
 
+    const getTeacherAssignments = (teacher) => {
+        const assignedIds = Array.isArray(teacher?.assignedClasses) ? teacher.assignedClasses.map(String) : [];
+        const classesFromIds = allClasses
+            .filter(c => c.type === 'CLASS' && assignedIds.includes(String(c._id)))
+            .map(c => c.name);
+        const groupsFromIds = allClasses
+            .filter(c => c.type === 'GROUP' && assignedIds.includes(String(c._id)))
+            .map(c => c.name);
+
+        const classSet = new Set(classesFromIds);
+        const groupSet = new Set(groupsFromIds);
+        const fallbackText = typeof teacher?.assignedClassesText === 'string' ? teacher.assignedClassesText : '';
+        const fallbackNames = fallbackText.split(',').map(n => n.trim()).filter(Boolean);
+
+        fallbackNames.forEach(name => {
+            const exact = allClasses.find(c => c.name === name);
+            if (exact) {
+                if (exact.type === 'GROUP') groupSet.add(exact.name);
+                else classSet.add(exact.name);
+            }
+        });
+
+        return {
+            classes: Array.from(classSet).sort((a, b) => a.localeCompare(b)),
+            groups: Array.from(groupSet).sort((a, b) => a.localeCompare(b))
+        };
+    };
+
     return (
         <div className="admin-container animate-in fade-in">
             <input type="file" ref={classCsvInputRef} className="hidden" accept=".csv,.txt" onChange={handleClassFileSelect} />
+            <input type="file" ref={groupCsvInputRef} className="hidden" accept=".csv,.txt" onChange={handleGroupFileSelect} />
 
             {importing && <div className="zoom-overlay level-2">
                 <div className="text-white font-black text-2xl flex flex-col items-center gap-4">
@@ -428,6 +567,12 @@ export default function AdminDashboard({ user }) {
                                     <button onClick={() => handlePurgeClass(it)} className="btn-action bg-red-50 text-red-600 border border-red-100 hover:bg-red-600 hover:text-white" title="Vider la classe">♻️ VIDER</button>
                                 </>
                             )}
+                            {view === 'groups' && (
+                                <>
+                                    <button onClick={() => triggerGroupImport(it._id)} className="btn-import-mini">📥 IMPORT CSV</button>
+                                    <button onClick={() => handleClearGroupStudents(it)} className="btn-action bg-red-50 text-red-600 border border-red-100 hover:bg-red-600 hover:text-white" title="Retirer ce groupe de tous les élèves">♻️ VIDER</button>
+                                </>
+                            )}
                             
                             {/* 3. Bouton ZOOM (TOUT LE MONDE) */}
                             <button onClick={() => setZoomedItem(it)} className="btn-action bg-cyan-50 text-cyan-600 border border-cyan-100 hover:bg-cyan-500 hover:text-white">🔍</button>
@@ -474,16 +619,7 @@ export default function AdminDashboard({ user }) {
                             {view === 'teachers' && (
                                 <>
                                     {(() => {
-                                        const assignedIds = Array.isArray(zoomedItem.assignedClasses) ? zoomedItem.assignedClasses.map(String) : [];
-                                        const assignedClassNames = allClasses
-                                            .filter(c => c.type === 'CLASS' && assignedIds.includes(String(c._id)))
-                                            .map(c => c.name)
-                                            .join(', ');
-                                        const assignedGroupNames = allClasses
-                                            .filter(c => c.type === 'GROUP' && assignedIds.includes(String(c._id)))
-                                            .map(c => c.name)
-                                            .join(', ');
-                                        const fallbackText = zoomedItem.assignedClassesText || '';
+                                        const { classes, groups } = getTeacherAssignments(zoomedItem);
                                         return (
                                             <>
                                     <div className="flex justify-between border-b pb-2">
@@ -513,13 +649,13 @@ export default function AdminDashboard({ user }) {
                                     <div className="flex justify-between border-b pb-2">
                                         <span className="text-slate-400 font-bold text-xs uppercase">Classes</span>
                                         <span className="font-black text-slate-800 text-right text-xs max-w-[220px]">
-                                            {assignedClassNames || (fallbackText && !assignedGroupNames ? fallbackText : '') || 'Aucune classe'}
+                                            {classes.length ? classes.join(', ') : 'Aucune classe'}
                                         </span>
                                     </div>
                                     <div className="flex justify-between border-b pb-2">
                                         <span className="text-slate-400 font-bold text-xs uppercase">Groupes</span>
                                         <span className="font-black text-slate-800 text-right text-xs max-w-[220px]">
-                                            {assignedGroupNames || 'Aucun groupe'}
+                                            {groups.length ? groups.join(', ') : 'Aucun groupe'}
                                         </span>
                                     </div>
                                             </>
@@ -607,9 +743,11 @@ export default function AdminDashboard({ user }) {
                                     <label className="form-label !mt-0 mb-2 !text-indigo-600">⚡ Email (Auto-remplissage)</label>
                                     <input 
                                         className="w-full p-3 border-2 rounded-lg font-bold outline-none border-indigo-200 bg-white text-indigo-900 placeholder-indigo-200 focus:border-indigo-500"
-                                        placeholder="ex: nom.prenom@ecole.com" 
-                                        value={currentItem.email || ''}
+                                        placeholder={view === 'teachers' ? "nom.prenom@condamine.edu.ec" : "ex: nom.prenom@ecole.com"} 
+                                        value={view === 'teachers' ? (buildTeacherEmail(currentItem.lastName, currentItem.firstName) || currentItem.email || '') : (currentItem.email || '')}
+                                        readOnly={view === 'teachers'}
                                         onChange={e => {
+                                            if (view === 'teachers') return;
                                             const val = e.target.value;
                                             const newState = { ...currentItem, email: val };
                                             const id = parseEmailToIdentity(val);
@@ -634,12 +772,20 @@ export default function AdminDashboard({ user }) {
                              <div className="grid grid-cols-2 gap-4">
                                 <div className="flex flex-col">
                                     <label className="form-label">Nom / Intitulé</label>
-                                    <input className="w-full p-3 border rounded font-bold uppercase" value={currentItem.lastName || currentItem.name || ''} onChange={e => setCurrentItem({...currentItem, lastName:e.target.value, name:e.target.value})} />
+                                    <input className="w-full p-3 border rounded font-bold uppercase" value={currentItem.lastName || currentItem.name || ''} onChange={e => {
+                                        const next = {...currentItem, lastName:e.target.value, name:e.target.value};
+                                        if (view === 'teachers') next.email = buildTeacherEmail(e.target.value, currentItem.firstName);
+                                        setCurrentItem(next);
+                                    }} />
                                 </div>
                                 {(view === 'students' || view === 'teachers' || view === 'administrateurs') && (
                                     <div className="flex flex-col">
                                         <label className="form-label">Prénom</label>
-                                        <input className="w-full p-3 border rounded font-bold" value={currentItem.firstName||''} onChange={e=>setCurrentItem({...currentItem, firstName:e.target.value})} />
+                                        <input className="w-full p-3 border rounded font-bold" value={currentItem.firstName||''} onChange={e=>{
+                                            const next = {...currentItem, firstName:e.target.value};
+                                            if (view === 'teachers') next.email = buildTeacherEmail(currentItem.lastName, e.target.value);
+                                            setCurrentItem(next);
+                                        }} />
                                     </div>
                                 )}
                              </div>
@@ -654,18 +800,26 @@ export default function AdminDashboard({ user }) {
                              {view === 'teachers' && (
                                 <>
                                     <div>
-                                        <label className="form-label">Matières</label>
+                                        <label className="form-label">Classes</label>
                                         <div className="selection-grid">
-                                            {allSubjects.map(sub => (
-                                                <div key={sub._id} onClick={() => toggleRelation('taughtSubjects', sub._id)} className={`toggle-chip ${currentItem.taughtSubjects.includes(sub._id) ? 'selected' : ''}`}>{sub.name}</div>
+                                            {allClasses.filter(isMainClassroom).map(cls => (
+                                                <div key={cls._id} onClick={() => toggleRelation('assignedClasses', cls._id)} className={`toggle-chip ${currentItem.assignedClasses?.includes(cls._id) ? 'selected' : ''}`}>{cls.name}</div>
                                             ))}
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="form-label">Classes Assignées</label>
+                                        <label className="form-label">Groupes</label>
                                         <div className="selection-grid">
-                                            {allClasses.map(cls => (
-                                                <div key={cls._id} onClick={() => toggleRelation('assignedClasses', cls._id)} className={`toggle-chip ${currentItem.assignedClasses.includes(cls._id) ? 'selected' : ''}`}>{cls.name}</div>
+                                            {allClasses.filter(isGroupClassroom).map(grp => (
+                                                <div key={grp._id} onClick={() => toggleRelation('assignedClasses', grp._id)} className={`toggle-chip ${currentItem.assignedClasses?.includes(grp._id) ? 'selected' : ''}`}>{grp.name}</div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Matières</label>
+                                        <div className="selection-grid">
+                                            {allSubjects.map(sub => (
+                                                <div key={sub._id} onClick={() => toggleRelation('taughtSubjects', sub._id)} className={`toggle-chip ${currentItem.taughtSubjects.includes(sub._id) ? 'selected' : ''}`}>{sub.name}</div>
                                             ))}
                                         </div>
                                     </div>

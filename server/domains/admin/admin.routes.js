@@ -6,6 +6,49 @@ const AdminExpert = require('./experts/admin.expert');
 const AdminAI = require('./ai/admin.ai'); 
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const slugEmailPart = (value = '') => String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
+const buildTeacherEmail = (lastName, firstName) => {
+    const nom = slugEmailPart(lastName);
+    const prenom = slugEmailPart(firstName);
+    if (!nom || !prenom) return '';
+    return `${nom}.${prenom}@condamine.edu.ec`;
+};
+const normalizeToken = (value = '') => String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+const parseCsvLine = (line = '', separator = ';') => {
+    const out = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                current += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+            continue;
+        }
+        if (ch === separator && !inQuotes) {
+            out.push(current.trim());
+            current = '';
+            continue;
+        }
+        current += ch;
+    }
+    out.push(current.trim());
+    return out.map(c => c.replace(/^"(.*)"$/, '$1').trim());
+};
+const getHeaderIndex = (headers, tests) => headers.findIndex(h => tests.some(t => h.includes(t)));
 
 // --- 🛠️ ROUTES DE GESTION GÉNÉRIQUES ---
 router.get('/classrooms', asyncHandler(async (req, res) => res.json(await mongoose.model('Classroom').find({}).sort({ name: 1 }).lean())));
@@ -24,6 +67,138 @@ router.post('/import/magic', asyncHandler(async (req, res) => {
     } catch (e) {
         res.status(500).json({ error: "Erreur IA: " + e.message });
     }
+}));
+
+// --- 📥 IMPORT CSV CIBLÉ : AFFECTATION D'UN GROUPE AUX ÉLÈVES ---
+router.post('/groups/:groupId/import-csv', asyncHandler(async (req, res) => {
+    const { groupId } = req.params;
+    const { fileName, csvText } = req.body || {};
+    if (!fileName || !csvText) {
+        return res.status(400).json({ error: "fileName et csvText sont requis." });
+    }
+
+    const Classroom = mongoose.model('Classroom');
+    const Student = mongoose.model('Student');
+    const group = await Classroom.findById(groupId).lean();
+    if (!group || group.type !== 'GROUP') {
+        return res.status(404).json({ error: "Groupe introuvable." });
+    }
+
+    const uploadedBaseName = String(fileName).replace(/\.[^.]+$/, '');
+    if (normalizeToken(uploadedBaseName) !== normalizeToken(group.name)) {
+        return res.status(400).json({
+            error: `Le fichier CSV doit s'appeler "${group.name}.csv". Fichier reçu : "${fileName}".`
+        });
+    }
+
+    const studentsInGroup = await Student.countDocuments({ assignedGroups: group._id });
+    if (studentsInGroup > 0) {
+        return res.status(400).json({
+            error: `Import refusé : le groupe "${group.name}" contient déjà ${studentsInGroup} élève(s).`
+        });
+    }
+
+    const lines = String(csvText).split(/\r?\n/).filter(l => l.trim() !== '');
+    if (!lines.length) return res.status(400).json({ error: "Fichier CSV vide." });
+    const countSemi = (lines[0].match(/;/g) || []).length;
+    const countComma = (lines[0].match(/,/g) || []).length;
+    const separator = countSemi >= countComma ? ';' : ',';
+
+    const headers = parseCsvLine(lines[0], separator).map(h => normalizeToken(h));
+    const firstNameIdx = headers.findIndex(h => h.includes('prenom') || h.includes('first'));
+    const lastNameIdx = headers.findIndex(h => (h.includes('nom') || h.includes('last')) && !h.includes('prenom'));
+    const fullNameIdx = getHeaderIndex(headers, ['nom complet', 'fullname', 'full name', 'eleve', 'élève']);
+    if ((firstNameIdx === -1 || lastNameIdx === -1) && fullNameIdx === -1) {
+        return res.status(400).json({
+            error: "Colonnes prénom/nom introuvables (ou colonne nom complet absente)."
+        });
+    }
+
+    const pairs = [];
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i], separator);
+        let firstName = '';
+        let lastName = '';
+
+        if (firstNameIdx !== -1 && lastNameIdx !== -1) {
+            firstName = String(cols[firstNameIdx] || '').trim();
+            lastName = String(cols[lastNameIdx] || '').trim();
+        } else {
+            const full = String(cols[fullNameIdx] || '').trim();
+            const chunks = full.split(/\s+/).filter(Boolean);
+            if (chunks.length >= 2) {
+                lastName = chunks[0];
+                firstName = chunks.slice(1).join(' ');
+            }
+        }
+        if (!firstName || !lastName) continue;
+
+        pairs.push({ firstName, lastName, row: i + 1 });
+    }
+
+    if (!pairs.length) {
+        return res.status(400).json({ error: "Aucune ligne élève exploitable trouvée dans le CSV." });
+    }
+
+    const allStudents = await Student.find({}, { _id: 1, firstName: 1, lastName: 1 }).lean();
+    const studentMap = new Map();
+    allStudents.forEach(s => {
+        studentMap.set(`${normalizeToken(s.firstName)}|${normalizeToken(s.lastName)}`, s._id);
+    });
+
+    const notFound = [];
+    const idsToAssign = [];
+    const seen = new Set();
+    for (const p of pairs) {
+        const key = `${normalizeToken(p.firstName)}|${normalizeToken(p.lastName)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const studentId = studentMap.get(key);
+        if (!studentId) {
+            notFound.push({ row: p.row, firstName: p.firstName, lastName: p.lastName });
+            continue;
+        }
+        idsToAssign.push(studentId);
+    }
+
+    if (idsToAssign.length) {
+        await Student.updateMany(
+            { _id: { $in: idsToAssign } },
+            { $addToSet: { assignedGroups: group._id } }
+        );
+    }
+
+    res.json({
+        ok: true,
+        groupName: group.name,
+        importedRows: pairs.length,
+        assignedCount: idsToAssign.length,
+        notFoundCount: notFound.length,
+        notFound: notFound.slice(0, 20)
+    });
+}));
+
+// --- ♻️ RETIRER UN GROUPE DE TOUS LES ÉLÈVES ---
+router.post('/groups/:groupId/clear-students', asyncHandler(async (req, res) => {
+    const { groupId } = req.params;
+    const Classroom = mongoose.model('Classroom');
+    const Student = mongoose.model('Student');
+
+    const group = await Classroom.findById(groupId).lean();
+    if (!group || group.type !== 'GROUP') {
+        return res.status(404).json({ error: "Groupe introuvable." });
+    }
+
+    const result = await Student.updateMany(
+        { assignedGroups: group._id },
+        { $pull: { assignedGroups: group._id } }
+    );
+
+    res.json({
+        ok: true,
+        groupName: group.name,
+        modifiedCount: result.modifiedCount || 0
+    });
 }));
 
 // --- 📊 ROUTE DE DIAGNOSTIC ---
@@ -80,6 +255,12 @@ router.post('/:collection', asyncHandler(async (req, res) => {
             if (!req.body.firstName || !req.body.lastName) return res.status(400).json({ error: "Nom et Prénom requis." });
             req.body.firstName = req.body.firstName.trim();
             req.body.lastName = req.body.lastName.trim().toUpperCase();
+        }
+        if (collection === 'teachers') {
+            if (!req.body.firstName || !req.body.lastName) return res.status(400).json({ error: "Nom et Prénom requis." });
+            req.body.firstName = req.body.firstName.trim();
+            req.body.lastName = req.body.lastName.trim().toUpperCase();
+            req.body.email = buildTeacherEmail(req.body.lastName, req.body.firstName);
         }
 
         // 🔒 LOGIQUE DE HASHAGE MANUELLE (FORCE BRUTE)

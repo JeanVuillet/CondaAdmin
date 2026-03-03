@@ -9,8 +9,9 @@ const SectionSchema = new mongoose.Schema({
 }, { _id: false });
 
 const TeacherSchema = new mongoose.Schema({
-    firstName: { type: String, required: true },
-    lastName: { type: String, required: true },
+    firstName: { type: String, required: true, trim: true },
+    lastName: { type: String, required: true, trim: true, uppercase: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
     password: { type: String, required: true }, // ⚠️ PAS DE HOOK ICI. Géré par le contrôleur.
     subjectSections: { type: [SectionSchema], default: [] },
     
@@ -25,5 +26,6 @@ const TeacherSchema = new mongoose.Schema({
 }, { collection: 'teachers' });
 
 TeacherSchema.index({ firstName: 1, lastName: 1 }, { unique: true });
+TeacherSchema.index({ email: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.models.Teacher || mongoose.model('Teacher', TeacherSchema);
