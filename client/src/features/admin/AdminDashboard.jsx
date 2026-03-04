@@ -438,7 +438,7 @@ export default function AdminDashboard({ user }) {
                 if (!res.ok) throw new Error(result.error || "Erreur serveur.");
 
                 const notFoundLines = (result.notFound || [])
-                    .map(x => `Ligne ${x.row}: ${x.firstName} ${x.lastName}`)
+                    .map(x => `Ligne ${x.row}: ${x.email || 'EMAIL manquant'}`)
                     .join('\n');
                 setMagicLog(
                     `✅ Import terminé (${result.groupName}).\n` +

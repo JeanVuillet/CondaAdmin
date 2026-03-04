@@ -23,6 +23,7 @@ const normalizeToken = (value = '') => String(value)
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+const normalizeEmail = (value = '') => String(value).trim().toLowerCase();
 const parseCsvLine = (line = '', separator = ';') => {
     const out = [];
     let current = '';
@@ -105,57 +106,42 @@ router.post('/groups/:groupId/import-csv', asyncHandler(async (req, res) => {
     const separator = countSemi >= countComma ? ';' : ',';
 
     const headers = parseCsvLine(lines[0], separator).map(h => normalizeToken(h));
-    const firstNameIdx = headers.findIndex(h => h.includes('prenom') || h.includes('first'));
-    const lastNameIdx = headers.findIndex(h => (h.includes('nom') || h.includes('last')) && !h.includes('prenom'));
-    const fullNameIdx = getHeaderIndex(headers, ['nom complet', 'fullname', 'full name', 'eleve', 'élève']);
-    if ((firstNameIdx === -1 || lastNameIdx === -1) && fullNameIdx === -1) {
+    const emailIdx = getHeaderIndex(headers, ['email', 'e-mail', 'mail']);
+    if (emailIdx === -1) {
         return res.status(400).json({
-            error: "Colonnes prénom/nom introuvables (ou colonne nom complet absente)."
+            error: "Colonne EMAIL introuvable dans le CSV."
         });
     }
 
-    const pairs = [];
+    const rows = [];
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCsvLine(lines[i], separator);
-        let firstName = '';
-        let lastName = '';
-
-        if (firstNameIdx !== -1 && lastNameIdx !== -1) {
-            firstName = String(cols[firstNameIdx] || '').trim();
-            lastName = String(cols[lastNameIdx] || '').trim();
-        } else {
-            const full = String(cols[fullNameIdx] || '').trim();
-            const chunks = full.split(/\s+/).filter(Boolean);
-            if (chunks.length >= 2) {
-                lastName = chunks[0];
-                firstName = chunks.slice(1).join(' ');
-            }
-        }
-        if (!firstName || !lastName) continue;
-
-        pairs.push({ firstName, lastName, row: i + 1 });
+        const email = normalizeEmail(cols[emailIdx] || '');
+        if (!email || !email.includes('@')) continue;
+        rows.push({ email, row: i + 1 });
     }
 
-    if (!pairs.length) {
-        return res.status(400).json({ error: "Aucune ligne élève exploitable trouvée dans le CSV." });
+    if (!rows.length) {
+        return res.status(400).json({ error: "Aucune ligne avec EMAIL valide trouvée dans le CSV." });
     }
 
-    const allStudents = await Student.find({}, { _id: 1, firstName: 1, lastName: 1 }).lean();
+    const allStudents = await Student.find({}, { _id: 1, email: 1 }).lean();
     const studentMap = new Map();
     allStudents.forEach(s => {
-        studentMap.set(`${normalizeToken(s.firstName)}|${normalizeToken(s.lastName)}`, s._id);
+        const key = normalizeEmail(s.email || '');
+        if (key) studentMap.set(key, s._id);
     });
 
     const notFound = [];
     const idsToAssign = [];
     const seen = new Set();
-    for (const p of pairs) {
-        const key = `${normalizeToken(p.firstName)}|${normalizeToken(p.lastName)}`;
+    for (const row of rows) {
+        const key = row.email;
         if (seen.has(key)) continue;
         seen.add(key);
         const studentId = studentMap.get(key);
         if (!studentId) {
-            notFound.push({ row: p.row, firstName: p.firstName, lastName: p.lastName });
+            notFound.push({ row: row.row, email: row.email });
             continue;
         }
         idsToAssign.push(studentId);
@@ -171,7 +157,7 @@ router.post('/groups/:groupId/import-csv', asyncHandler(async (req, res) => {
     res.json({
         ok: true,
         groupName: group.name,
-        importedRows: pairs.length,
+        importedRows: rows.length,
         assignedCount: idsToAssign.length,
         notFoundCount: notFound.length,
         notFound: notFound.slice(0, 20)
