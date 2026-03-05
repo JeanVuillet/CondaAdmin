@@ -231,6 +231,49 @@ export default function AdminDashboard({ user }) {
         const t = String(c?.type || '').toUpperCase();
         return t === 'CLASS' || t === '';
     };
+    const splitClassCode = (value = '') => {
+        const code = String(value || '').trim().toUpperCase().split(/\s+/)[0] || '';
+        const levelMatch = code.match(/^\d+/);
+        const level = levelMatch ? levelMatch[0] : '';
+        const letters = code.slice(level.length).replace(/[^A-Z]/g, '');
+        return { level, letters, raw: code };
+    };
+    const isGroupCompatibleWithClass = (groupName, className) => {
+        const cls = String(className || '').trim().toUpperCase();
+        const grp = String(groupName || '').trim().toUpperCase();
+
+        // Supporte "2D", "2 D", "2CD", etc.
+        const classMatch = cls.match(/^(\d+)\s*([A-Z]+)/);
+        const groupMatch = grp.match(/^(\d+)\s*([A-Z]+)/);
+        if (!classMatch || !groupMatch) return false;
+
+        // Règle demandée :
+        // 1) premier caractère identique (niveau)
+        // 2) la lettre de classe (2e caractère de code) est incluse dans les lettres du groupe
+        const classFirstChar = classMatch[1].charAt(0);
+        const groupFirstChar = groupMatch[1].charAt(0);
+        if (classFirstChar !== groupFirstChar) return false;
+
+        const classLetter = classMatch[2].charAt(0);
+        const groupLetters = groupMatch[2];
+        return groupLetters.includes(classLetter);
+    };
+    const resolveStudentClassName = (studentItem) => {
+        const classRef = studentItem?.classId;
+        if (classRef && typeof classRef === 'object') {
+            if (classRef.name) return String(classRef.name);
+            if (classRef._id) {
+                const found = allClasses.find(cl => String(cl._id) === String(classRef._id));
+                if (found?.name) return String(found.name);
+            }
+        }
+        if (classRef) {
+            const found = allClasses.find(cl => String(cl._id) === String(classRef));
+            if (found?.name) return String(found.name);
+        }
+        if (studentItem?.currentClass) return String(studentItem.currentClass);
+        return '';
+    };
 
     // --- 📥 IMPORT CSV ---
     const triggerClassImport = (classId) => {
@@ -851,7 +894,12 @@ export default function AdminDashboard({ user }) {
                                     <div>
                                         <label className="form-label">Groupes (Options)</label>
                                         <div className="selection-grid">
-                                            {allClasses.filter(c => c.type === 'GROUP' && (!currentItem.classId || c.name.startsWith(allClasses.find(cl => cl._id === currentItem.classId)?.name))).map(grp => (
+                                            {allClasses.filter(c => {
+                                                if (!isGroupClassroom(c)) return false;
+                                                const selectedClassName = resolveStudentClassName(currentItem);
+                                                if (!selectedClassName) return true;
+                                                return isGroupCompatibleWithClass(c.name, selectedClassName);
+                                            }).map(grp => (
                                                 <div key={grp._id} onClick={() => toggleRelation('assignedGroups', grp._id)} className={`toggle-chip ${currentItem.assignedGroups?.includes(grp._id) ? 'selected' : ''}`}>{grp.name}</div>
                                             ))}
                                         </div>
