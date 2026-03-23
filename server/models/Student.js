@@ -53,6 +53,7 @@ const StudentSchema = new mongoose.Schema({
     hasReward: { type: Boolean, default: false },
 
     // Système
+    test: { type: String, enum: ['Y', 'N'], default: 'N' },
     isTestAccount: { type: Boolean, default: false },
     lastLogin: { type: Date, default: Date.now }
 }, { collection: 'students' });

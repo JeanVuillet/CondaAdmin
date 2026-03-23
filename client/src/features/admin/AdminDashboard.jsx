@@ -72,7 +72,7 @@ export default function AdminDashboard({ user }) {
             type: view === 'groups' ? 'GROUP' : 'CLASS', 
             taughtSubjects: [], assignedClasses: [], assignedGroups: [],
             email: '', parentEmail: '', level: '',
-            gender: 'M', birthDate: ''
+            gender: 'M', birthDate: '', test: 'N', isTestAccount: false
         };
         setCurrentItem(defaults);
         setModalMode('create');
@@ -86,6 +86,10 @@ export default function AdminDashboard({ user }) {
         // Sécurité : on vide le password pour ne pas écraser le hash
         if (view === 'administrateurs' || view === 'teachers') {
             safeItem.password = ''; 
+        }
+        if (view === 'students') {
+            safeItem.test = (safeItem.test === 'Y' || safeItem.test === 'N') ? safeItem.test : 'N';
+            safeItem.isTestAccount = Boolean(safeItem.isTestAccount);
         }
         setCurrentItem(safeItem);
         setModalMode('edit');
@@ -154,6 +158,8 @@ export default function AdminDashboard({ user }) {
         if (view === 'students') {
              if (!dataToSend.firstName || !dataToSend.lastName) return alert("Nom et Prénom obligatoires !");
              if (!dataToSend.fullName) dataToSend.fullName = `${dataToSend.lastName} ${dataToSend.firstName}`;
+             dataToSend.test = dataToSend.test === 'Y' ? 'Y' : 'N';
+             dataToSend.isTestAccount = Boolean(dataToSend.isTestAccount);
              
              if (!dataToSend.password) {
                  if(dataToSend.birthDate) {
@@ -308,28 +314,41 @@ export default function AdminDashboard({ user }) {
                 const headerLineRaw = lines[0];
                 const countSemi = (headerLineRaw.match(/;/g) || []).length;
                 const countComma = (headerLineRaw.match(/,/g) || []).length;
-                const separator = countSemi >= countComma ? ';' : ',';
+                const countTab = (headerLineRaw.match(/\t/g) || []).length;
+                let separator = ';';
+                if (countComma > countSemi && countComma >= countTab) separator = ',';
+                if (countTab > countSemi && countTab > countComma) separator = '\t';
                 setMagicLog(`⚙️ Séparateur : "${separator}"`);
 
-                const headers = headerLineRaw.split(separator).map(h => h.trim().toLowerCase());
+                const headersRaw = headerLineRaw.split(separator).map(h => h.trim());
+                const normalizeHeader = (h) =>
+                    h
+                        .toLowerCase()
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/[^a-z0-9]/g, '');
+                const headersNorm = headersRaw.map(normalizeHeader);
                 
                 const map = {
-                    email: headers.findIndex(h => h.includes('email') || h.includes('mail')),
-                    fullname: headers.findIndex(h => h.includes('eleve') || h.includes('nom complet') || h.includes('nom/prénom')),
-                    sex: headers.findIndex(h => h.includes('sexe') || h.includes('genre')),
-                    birthDate: headers.findIndex(h => h.includes('né(e) le') || h.includes('ne le') || h.includes('naissance')),
+                    email: headersNorm.findIndex(h => h.includes('email') || h.includes('mail') || h.includes('courriel')),
+                    fullname: headersNorm.findIndex(h => h.includes('eleve') || h.includes('nomcomplet') || h.includes('nomprenom')),
+                    sex: headersNorm.findIndex(h => h.includes('sexe') || h.includes('genre')),
+                    birthDate: headersNorm.findIndex(h => h.includes('neele') || h.includes('nele') || h.includes('naissance') || h.includes('datenaissance')),
                 };
 
                 const groupCols = [];
-                if (headers.length > 12) groupCols.push(12);
-                if (headers.length > 13) groupCols.push(13);
-                if (headers.length > 14) groupCols.push(14);
-                if (headers.length > 15 && headers[15].includes('autre')) {
+                if (headersRaw.length > 12) groupCols.push(12);
+                if (headersRaw.length > 13) groupCols.push(13);
+                if (headersRaw.length > 14) groupCols.push(14);
+                if (headersRaw.length > 15 && headersNorm[15].includes('autre')) {
                     groupCols.push(15);
                     setMagicLog(`✅ Option P détectée.`);
                 }
 
-                if (map.email === -1) throw new Error("Colonne 'Email' introuvable.");
+                if (map.email === -1) {
+                    const headerPreview = headersRaw.slice(0, 25).join(' | ');
+                    throw new Error(`Colonne "Email" introuvable.\nEn-têtes détectés : ${headerPreview}`);
+                }
 
                 setMagicLog(`\n🔎 ANALYSE DES GROUPES...`);
                 const rowsToProcess = [];
@@ -378,11 +397,21 @@ export default function AdminDashboard({ user }) {
                 setMagicLog(`\n🛡️ PRÉPARATION IMPORT ÉLÈVES...`);
                 let successCount = 0;
                 let errorCount = 0;
+                let skippedMissingEmail = 0;
+                let skippedInvalidEmail = 0;
+                const dataRowCount = Math.max(lines.length - 1, 0);
                 
                 for (const row of rowsToProcess) {
                     const cols = row.cols;
                     const email = cols[map.email] ? cols[map.email].toLowerCase() : "";
-                    if (!email || !email.includes('@')) continue;
+                    if (!email) {
+                        skippedMissingEmail++;
+                        continue;
+                    }
+                    if (!email.includes('@')) {
+                        skippedInvalidEmail++;
+                        continue;
+                    }
 
                     let lastName = "NOM";
                     let firstName = "Prénom";
@@ -421,7 +450,7 @@ export default function AdminDashboard({ user }) {
                             firstName, lastName, fullName, email, password,
                             classId: targetImportClass,
                             currentClass: targetClassName,
-                            assignedGroups, gender, birthDate
+                            assignedGroups, gender, birthDate, test: 'N'
                         };
                         
                         const res = await fetch('/api/admin/students', {
@@ -435,7 +464,28 @@ export default function AdminDashboard({ user }) {
                     } catch(e) { errorCount++; }
                 }
 
-                setMagicLog(`\n🏁 TERMINÉ.\nsuccès : ${successCount}\nErreurs/Doublons : ${errorCount}`);
+                const skippedTotal = skippedMissingEmail + skippedInvalidEmail;
+                const summary =
+                    `\n🏁 TERMINÉ.\n` +
+                    `Lignes lues : ${dataRowCount}\n` +
+                    `Succès : ${successCount}\n` +
+                    `Erreurs/Doublons : ${errorCount}\n` +
+                    `Ignorées (email manquant/invalide) : ${skippedTotal}`;
+                setMagicLog(summary);
+
+                if (successCount === 0) {
+                    const reasons = [
+                        `• Nom de fichier : doit contenir "${targetClassName}"`,
+                        `• Colonne "Email" absente ou mal nommée`,
+                        `• Emails manquants ou invalides`,
+                        `• Élèves déjà existants (doublons)`,
+                    ].join('\n');
+                    setMagicLog(
+                        summary +
+                        `\n\n⚠️ AUCUN ÉLÈVE IMPORTÉ.\n` +
+                        `Causes fréquentes :\n${reasons}`
+                    );
+                }
                 setTimeout(() => {
                     if (confirm(`Import terminé.\n${successCount} élèves ajoutés.\n${errorCount} ignorés (doublons).\n\nRecharger ?`)) {
                         setShowMagicModal(false); loadData();
@@ -659,6 +709,12 @@ export default function AdminDashboard({ user }) {
                                     </span>
                                 </div>
                             )}
+                            {view === 'students' && (
+                                <div className="flex justify-between border-b pb-2">
+                                    <span className="text-slate-400 font-bold text-xs uppercase">Test</span>
+                                    <span className="font-black text-slate-800 text-right text-xs">{zoomedItem.test || 'N'}</span>
+                                </div>
+                            )}
                             {view === 'teachers' && (
                                 <>
                                     {(() => {
@@ -879,18 +935,34 @@ export default function AdminDashboard({ user }) {
                                                 <option value="F">Femme</option>
                                             </select>
                                         </div>
-                                        <div className="flex flex-col">
-                                            <label className="form-label">Classe Principale</label>
-                                            <select className="w-full p-3 border rounded bg-white font-bold" value={currentItem.classId || ''} onChange={e => setCurrentItem({...currentItem, classId:e.target.value})}>
-                                                <option value="">-- AUCUNE --</option>
-                                                {allClasses.filter(c => c.type === 'CLASS').map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
                                     <div className="flex flex-col">
-                                        <label className="form-label">Date de Naissance</label>
-                                        <input className="w-full p-3 border rounded bg-white font-bold tracking-widest" placeholder="ex: 04/11/2005" value={currentItem.birthDate || ''} onChange={e => { const val = e.target.value; const rawDate = val.replace(/[^0-9]/g, ''); setCurrentItem({ ...currentItem, birthDate: val, password: rawDate }); }} />
+                                        <label className="form-label">Classe Principale</label>
+                                        <select className="w-full p-3 border rounded bg-white font-bold" value={currentItem.classId || ''} onChange={e => setCurrentItem({...currentItem, classId:e.target.value})}>
+                                            <option value="">-- AUCUNE --</option>
+                                            {allClasses.filter(c => c.type === 'CLASS').map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                                        </select>
                                     </div>
+                                </div>
+                                <div className="flex flex-col">
+                                    <label className="form-label">Test (Y/N)</label>
+                                    <select className="w-full p-3 border rounded bg-white font-bold" value={currentItem.test || 'N'} onChange={e => setCurrentItem({...currentItem, test: e.target.value})}>
+                                        <option value="N">N</option>
+                                        <option value="Y">Y</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        id="student-is-test-account"
+                                        type="checkbox"
+                                        checked={Boolean(currentItem.isTestAccount)}
+                                        onChange={e => setCurrentItem({ ...currentItem, isTestAccount: e.target.checked })}
+                                    />
+                                    <label htmlFor="student-is-test-account" className="form-label !m-0">isTestAccount</label>
+                                </div>
+                                <div className="flex flex-col">
+                                    <label className="form-label">Date de Naissance</label>
+                                    <input className="w-full p-3 border rounded bg-white font-bold tracking-widest" placeholder="ex: 04/11/2005" value={currentItem.birthDate || ''} onChange={e => { const val = e.target.value; const rawDate = val.replace(/[^0-9]/g, ''); setCurrentItem({ ...currentItem, birthDate: val, password: rawDate }); }} />
+                                </div>
                                     <div>
                                         <label className="form-label">Groupes (Options)</label>
                                         <div className="selection-grid">
